@@ -13,8 +13,10 @@ FFmpeg Webapp is a browser UI for the two-pass batch encode workflow. It scans a
 ## Start The App
 
 ```bash
-cd /home/koldKat/Media/Shares/People/Alex/Work/Scripts/ffmpeg-webapp
-node server.js
+git clone https://github.com/koldKat/ffmpeg-encode.git
+cd ffmpeg-encode
+npm install
+npm start
 ```
 
 Open `http://<machine>:3017`.
@@ -66,7 +68,9 @@ Bulk actions:
 - The queue auto-scrolls while dragging near the top or bottom edge, so long moves do not require step-by-step repositioning.
 - Queue cards stay compact by hiding the source path until you hover the file or folder name.
 - `Apply Tune` sets a tune for all selected files.
-- `Apply Audio Track` sets the zero-based audio stream number for all selected files. Track `0` maps to the first audio stream, track `1` maps to the second, and so on.
+- `Apply Audio` accepts either a language shown from the files' probed metadata or a zero-based audio stream number. Track `0` is the first audio stream, track `1` is the second, and so on.
+- Language suggestions are derived from the loaded files; languages are not hardcoded. The server resolves the requested language separately for each selected file.
+- If a requested language is missing from a particular file, that file falls back to audio track `0`.
 - `Apply Save Folder` sets the final destination folder for all selected files.
 - The `X` button on each queue card removes that file or grouped subfolder from the editable queue only. It does not delete anything from disk.
 
@@ -100,6 +104,8 @@ If the final save succeeds and the final path differs from the source file:
 
 The selected source root itself is not removed.
 
+The output keeps the first video stream and one selected audio stream. Audio is encoded as AAC stereo. Subtitles, chapters, attachments, source metadata, extra video streams, and additional audio streams are not copied.
+
 ## Skip Behavior
 
 A file is skipped when:
@@ -119,6 +125,8 @@ Use `Stop After Current File` in the Current File header and press `Enable` to l
 The server sends stop signals to the running ffmpeg process group for immediate stops. Server shutdown also attempts to stop the active ffmpeg process so the encoder is less likely to remain running in the background.
 
 User-initiated stops are tracked as `stopped`, not as failed files.
+
+Pause state and partial FFmpeg passes do not survive a server restart. Server shutdown attempts to stop FFmpeg, and the remaining queue plan is retained. Starting again processes the unfinished file from the beginning; it does not resume the interrupted pass.
 
 When ffmpeg finishes and the output is being copied to its final destination on another filesystem, the Current File progress bar switches to `Move progress` and shows the file-transfer percentage until promotion completes.
 
@@ -146,12 +154,13 @@ Shows the active file, pass, speed, frame rate, frames, ETA/finish time, size, a
 ### Queue
 - Before start: editable queue with selection controls
 - During run: live remaining queue preview without edit controls
+- The browser renders 50 entries initially and appends 50 more for each separate scroll to the bottom.
 
 ### Latest Completed
-Shows recently encoded files.
+Shows successful files from the current or retained last run, newest first. It renders 50 initially and appends 50 more when you scroll to the bottom.
 
 ### Run Log
-Shows current-batch events, including scans, starts, skips, failures, stops, and completion messages. The active batch run is not capped to a short recent slice in the UI.
+Shows current-batch events, including scans, starts, skips, failures, stops, and completion messages. It renders the newest 50 initially and appends 50 more when you scroll to the bottom. Individual messages are shortened to 420 characters.
 
 ## Admin Panel
 
@@ -160,10 +169,14 @@ The localhost-only admin panel at `/admin` can:
 - reset passwords for users other than `koldKat`
 - delete users other than `koldKat`
 - update the app version shown in the dashboard header
+- show hostname, user/session counts, RSS, heap memory, and current Node-plus-FFmpeg CPU usage
 
 `koldKat` is intentionally protected in the admin UI and admin API.
 
+Admin resource cards refresh every second. CPU percentage is normalized to the full machine capacity, so it remains in the human-readable `0-100%` range.
+
 ## Notes
 
-- The queue preview shown during an active run is intentionally limited, so large batches do not flood the browser with the entire queue on every update.
+- The active queue API and browser use 50-item pages so large batches do not flood every live update.
+- The editable queue is fetched in full because folder grouping and exact drag reordering require the whole order, but only 50 queue cards are rendered initially.
 - Database size is based on the SQLite file size reported from SQLite page statistics.
