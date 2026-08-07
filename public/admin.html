@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FFmpeg Batch Encode Admin</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-shell admin-shell">
+    <header class="hero admin-hero">
+      <div>
+        <p class="eyebrow">Localhost Admin Only</p>
+        <h1>FFmpeg Batch Encode Admin</h1>
+      </div>
+      <div class="hero-status admin-version-stack">
+        <div class="viewer-chip" id="admin-machine-chip"></div>
+        <div class="hero-meta">Manage users and the displayed app version.</div>
+      </div>
+    </header>
+
+    <main class="dashboard-grid admin-grid">
+      <section class="panel admin-overview-panel">
+        <div class="panel-head">
+          <h2>Admin Overview</h2>
+          <span class="panel-kicker">Local runtime and account snapshot</span>
+        </div>
+        <div class="stats-grid stats-grid-four">
+          <article class="stat-card accent-orange">
+            <span class="stat-label">App Version</span>
+            <strong id="admin-version-stat">N/A</strong>
+            <small id="admin-version-sub">stored in SQLite</small>
+          </article>
+          <article class="stat-card accent-cyan">
+            <span class="stat-label">Machine</span>
+            <strong id="admin-machine-stat">localhost</strong>
+            <small id="admin-machine-sub">localhost admin only</small>
+          </article>
+          <article class="stat-card accent-green">
+            <span class="stat-label">Users / Sessions</span>
+            <strong id="admin-users-card-stat">0 | 0</strong>
+            <small id="admin-users-card-sub">users | active sessions</small>
+          </article>
+          <article class="stat-card accent-slate">
+            <span class="stat-label">RSS</span>
+            <strong id="admin-rss-stat">N/A</strong>
+            <small id="admin-rss-sub">resident set size</small>
+          </article>
+          <article class="stat-card accent-cyan">
+            <span class="stat-label">Memory</span>
+            <strong id="admin-memory-stat">N/A | N/A</strong>
+            <small id="admin-memory-sub">heap used | total</small>
+          </article>
+          <article class="stat-card accent-green">
+            <span class="stat-label">CPU Usage</span>
+            <strong id="admin-cpu-stat">N/A</strong>
+            <small id="admin-cpu-sub">live app + ffmpeg</small>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel admin-version-panel">
+        <div class="panel-head">
+          <h2>App Version</h2>
+          <span class="panel-kicker">Stored in SQLite</span>
+        </div>
+        <div class="admin-form-grid">
+          <label>
+            <span>Current version</span>
+            <input type="text" id="admin-version" placeholder="1.0.9">
+          </label>
+        </div>
+        <div class="actions-row">
+          <button id="save-version-btn" class="primary-btn small-btn">Save Version</button>
+        </div>
+        <div id="admin-version-msg" class="inline-error admin-inline"></div>
+      </section>
+
+      <section class="panel admin-user-panel">
+        <div class="panel-head">
+          <h2>Create User</h2>
+          <span class="panel-kicker">Remote registration alternative</span>
+        </div>
+        <div class="admin-form-grid admin-form-grid-two">
+          <label>
+            <span>Username</span>
+            <input type="text" id="admin-new-username" placeholder="newuser">
+          </label>
+          <label>
+            <span>Password</span>
+            <input type="password" id="admin-new-password" placeholder="password">
+          </label>
+        </div>
+        <div class="actions-row">
+          <button id="create-user-btn" class="primary-btn small-btn">Create User</button>
+        </div>
+        <div id="admin-user-msg" class="inline-error admin-inline"></div>
+      </section>
+
+      <section class="panel admin-users-panel">
+        <div class="panel-head">
+          <h2>Users</h2>
+          <span class="panel-kicker">`koldKat` is protected</span>
+        </div>
+        <div id="admin-users-list" class="admin-users-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/js/admin.js"></script>
+</body>
+</html>

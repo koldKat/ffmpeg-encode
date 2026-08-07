@@ -1,0 +1,12 @@
+{
+  "name": "ffmpeg-webapp",
+  "version": "1.1.0",
+  "description": "Web UI for FFmpeg batch two-pass encode jobs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3"
+  }
+}

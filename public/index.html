@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FFmpeg Batch Encode</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="login-screen" class="auth-shell">
+    <div class="auth-card">
+      <p class="eyebrow">Remote Access Enabled</p>
+      <h1>FFmpeg Batch Encode</h1>
+      <div class="auth-form">
+        <input type="text" id="auth-username" placeholder="Username" autocomplete="username">
+        <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password">
+        <div id="auth-error" class="inline-error"></div>
+        <div class="actions-row auth-actions">
+          <button id="login-btn" class="primary-btn">Log In</button>
+          <button id="register-btn" class="ghost-btn">Register</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="blocked-screen" class="auth-shell" style="display:none">
+    <div class="auth-card auth-card-narrow">
+      <p class="eyebrow">Access Restricted</p>
+      <h1>Account Logged In</h1>
+      <p class="auth-copy">This account exists, but only <strong>koldKat</strong> is allowed to use the FFmpeg webapp right now.</p>
+      <div class="actions-row auth-actions">
+        <button id="blocked-logout-btn" class="ghost-btn">Log Out</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-screen" style="display:none">
+    <div class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow" id="app-eyebrow">Client + Server Encode Dashboard - version 1.0.9</p>
+          <h1>FFmpeg Batch Encode</h1>
+        </div>
+        <div class="hero-status">
+          <div class="top-actions">
+            <div class="top-chips">
+              <div class="viewer-chip" id="machine-chip"></div>
+              <div class="viewer-chip" id="viewer-chip"></div>
+            </div>
+            <button id="logout-btn" class="ghost-btn small-btn">Log Out</button>
+          </div>
+          <div class="status-row">
+            <div class="hero-meta hero-meta-hint" id="hero-meta" data-full-text="Ready."><span class="hero-meta-text" id="hero-meta-text">Ready.</span></div>
+            <div class="status-pill" id="status-pill">Idle</div>
+          </div>
+        </div>
+      </header>
+
+      <main class="dashboard-grid">
+        <section class="panel config-panel">
+          <div class="panel-head">
+            <h2>Job Setup</h2>
+
+          </div>
+          <form id="config-form" class="config-grid">
+            <label>
+              <span>Source root</span>
+              <div class="path-input-wrap">
+                <input type="text" id="source-root" placeholder="/path/to/source" autocomplete="off">
+                <div id="path-suggestions-source" class="path-suggestions-menu" hidden></div>
+              </div>
+            </label>
+            <label>
+              <span>Staging root</span>
+              <div class="path-input-wrap">
+                <input type="text" id="out-root" placeholder="~/Videos" autocomplete="off">
+                <div id="path-suggestions-out" class="path-suggestions-menu" hidden></div>
+              </div>
+            </label>
+            <label>
+              <span>Tune</span>
+              <input type="text" id="tune" list="tune-options" placeholder="film">
+            </label>
+            <label>
+              <span>Preset</span>
+              <input type="text" id="preset" list="preset-options" placeholder="slow">
+            </label>
+            <label>
+              <span>Target MB/min</span>
+              <input type="number" id="mb-per-min" min="1">
+            </label>
+            <label>
+              <span>Target MB step</span>
+              <input type="number" id="mb-step" min="1">
+            </label>
+            <label>
+              <span>Audio kbps</span>
+              <input type="number" id="audio-kbit" min="1">
+            </label>
+            <label>
+              <span>Min video kbps</span>
+              <input type="number" id="min-video-kbit" min="1">
+            </label>
+            <label>
+              <span>Overhead %</span>
+              <input type="number" id="overhead-pct" min="0">
+            </label>
+            <label>
+              <span id="enc-threads-label">Threads</span>
+              <input type="number" id="enc-threads" min="0">
+            </label>
+          </form>
+          <div class="actions-row config-actions">
+            <button id="scan-btn" class="ghost-btn">Load File Queue</button>
+            <button id="start-btn" class="primary-btn">Start Encode Job</button>
+            <button id="stop-btn" class="ghost-btn stop-btn">Stop</button>
+          </div>
+          <div id="form-error" class="inline-error"></div>
+        </section>
+
+        <section class="panel summary-panel">
+          <div class="panel-head">
+            <h2>Batch Summary</h2>
+            <span class="panel-kicker" id="found-label">No scan yet</span>
+          </div>
+          <div class="stats-grid stats-grid-four">
+            <article class="stat-card accent-orange">
+              <span class="stat-label">Current Counts</span>
+              <strong id="counts-stat">0 / 0</strong>
+              <small id="counts-sub">encoded 0, skipped 0, failed 0</small>
+            </article>
+            <article class="stat-card accent-cyan">
+              <span class="stat-label">Current Savings</span>
+              <strong id="savings-stat">0.0 MB</strong>
+              <small id="savings-sub">Average savings per file: N/A</small>
+            </article>
+            <article class="stat-card accent-green">
+              <span class="stat-label">Current Speed</span>
+              <strong id="speed-stat">N/A</strong>
+              <small id="speed-sub">Average bitrate N/A</small>
+            </article>
+            <article class="stat-card accent-slate">
+              <span class="stat-label">Current ETA</span>
+              <strong id="eta-stat">N/A</strong>
+              <small id="eta-sub">Need 1 completed encode</small>
+            </article>
+          </div>
+          <div class="progress-stack">
+            <div class="progress-meta">
+              <span>Overall progress</span>
+              <span id="overall-progress-label">0.0%</span>
+            </div>
+            <div class="progress-track large"><div id="overall-progress-bar" class="progress-fill progress-orange"></div></div>
+          </div>
+          <div class="panel-head alltime-head">
+            <h2>All-Time Summary</h2>
+            <button id="vacuum-btn" class="ghost-btn small-btn">Vacuum Database</button>
+          </div>
+          <div class="stats-grid stats-grid-four">
+            <article class="stat-card accent-orange">
+              <span class="stat-label">Files Processed</span>
+              <strong id="lifetime-files">0</strong>
+              <small id="lifetime-files-sub">runs 0, encoded 0</small>
+            </article>
+            <article class="stat-card accent-cyan">
+              <span class="stat-label">All-Time Savings</span>
+              <strong id="lifetime-savings">0.0 MB</strong>
+              <small id="lifetime-savings-sub">Average savings per file: N/A</small>
+            </article>
+            <article class="stat-card accent-green">
+              <span class="stat-label">All-Time Speed</span>
+              <strong id="lifetime-speed">N/A</strong>
+              <small id="lifetime-speed-sub">Average bitrate N/A</small>
+            </article>
+            <article class="stat-card accent-slate">
+              <span class="stat-label">Database Size</span>
+              <strong id="lifetime-health">0.0 MB</strong>
+              <small id="lifetime-health-sub">first N/A • last N/A</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel current-panel">
+          <div class="panel-head current-panel-head">
+            <div class="current-panel-title-row">
+              <h2>Current File</h2>
+              <span class="panel-kicker current-panel-kicker" id="current-file-kicker">Waiting for a job</span>
+            </div>
+            <div class="current-stop-toggle">
+              <span class="current-stop-label" id="pause-label">Pause batch</span>
+              <button id="pause-btn" class="ghost-btn small-btn pause-btn">Pause</button>
+              <span class="current-stop-label">Stop after current file</span>
+              <button id="stop-after-btn" class="ghost-btn small-btn stop-after-btn">Enable</button>
+            </div>
+          </div>
+          <div class="current-title-wrap">
+            <div class="current-title current-title-hint" id="current-name-hint" data-name-hint="No active file"><span class="current-title-text" id="current-name">No active file</span></div>
+            <div class="current-path" id="current-path"></div>
+          </div>
+          <div class="progress-stack">
+            <div class="progress-meta">
+              <span id="file-progress-title">File progress</span>
+              <span id="file-progress-label">0.0%</span>
+            </div>
+            <div class="progress-track"><div id="file-progress-bar" class="progress-fill progress-cyan"></div></div>
+          </div>
+          <div class="metric-grid" id="current-metrics"></div>
+        </section>
+
+        <section class="panel queue-panel">
+          <div class="panel-head">
+            <h2>Queue</h2>
+            <span class="panel-kicker" id="queue-kicker">Pending and in-flight files</span>
+          </div>
+          <div class="queue-bulk-tools" id="queue-tools">
+            <div class="queue-bulk-grid">
+              <div class="queue-bulk-labels">
+                <span>Apply tune</span>
+                <span>Apply audio language / track</span>
+                <span>Apply save folder</span>
+              </div>
+              <div class="queue-bulk-fields">
+                <input type="text" id="bulk-tune" list="tune-options" placeholder="film" aria-label="Apply tune">
+                <input type="text" id="bulk-audio-track" list="audio-track-options" value="0" placeholder="language or track" aria-label="Apply audio language or track">
+                <div class="path-input-wrap">
+                  <input type="text" id="bulk-save-to" placeholder="/path/to/output" aria-label="Apply save folder" autocomplete="off">
+                  <div id="path-suggestions-save" class="path-suggestions-menu" hidden></div>
+                </div>
+              </div>
+              <div class="queue-bulk-actions">
+                <button id="apply-tune-btn" class="ghost-btn small-btn">Apply Tune</button>
+                <button id="apply-audio-track-btn" class="ghost-btn small-btn">Apply Audio</button>
+                <button id="apply-save-btn" class="ghost-btn small-btn">Apply Save Folder</button>
+              </div>
+            </div>
+            <datalist id="tune-options">
+              <option value="film"></option>
+              <option value="animation"></option>
+              <option value="grain"></option>
+              <option value="stillimage"></option>
+              <option value="fastdecode"></option>
+              <option value="zerolatency"></option>
+              <option value="psnr"></option>
+              <option value="ssim"></option>
+            </datalist>
+            <datalist id="audio-track-options"></datalist>
+            <datalist id="preset-options">
+              <option value="ultrafast"></option>
+              <option value="superfast"></option>
+              <option value="veryfast"></option>
+              <option value="faster"></option>
+              <option value="fast"></option>
+              <option value="medium"></option>
+              <option value="slow"></option>
+              <option value="slower"></option>
+              <option value="veryslow"></option>
+              <option value="placebo"></option>
+            </datalist>
+          </div>
+          <div id="queue-list" class="stack-list"></div>
+        </section>
+
+        <section class="panel recent-panel">
+          <div class="panel-head">
+            <h2>Latest Completed</h2>
+            <span class="panel-kicker">Most recent encoded files</span>
+          </div>
+          <div id="recent-list" class="stack-list"></div>
+        </section>
+
+        <section class="panel log-panel">
+          <div class="panel-head">
+            <h2>Run Log</h2>
+            <span class="panel-kicker">Latest state changes</span>
+          </div>
+          <div id="log-list" class="log-list"></div>
+        </section>
+      </main>
+      <footer class="app-footer">koldKat productions</footer>
+    </div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
