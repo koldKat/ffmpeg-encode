@@ -258,19 +258,19 @@
               <option value="placebo"></option>
             </datalist>
           </div>
-          <div class="active-queue-add" id="active-queue-add" hidden>
+          <details class="active-queue-add" id="active-queue-add" open hidden>
+            <summary class="active-queue-add-summary">Add file or folder from the active source</summary>
             <form id="active-queue-inspect-form" class="active-queue-add-form">
-              <label for="active-queue-path">Add file or folder from the active source</label>
               <div class="active-queue-add-row">
                 <div class="path-input-wrap">
-                  <input type="text" id="active-queue-path" placeholder="/path/inside/source" autocomplete="off">
+                  <input type="text" id="active-queue-path" placeholder="/path/inside/source" aria-label="File or folder from the active source" autocomplete="off">
                   <div id="path-suggestions-active-queue" class="path-suggestions-menu" hidden></div>
                 </div>
                 <button type="submit" id="active-queue-inspect-btn" class="ghost-btn small-btn">Inspect</button>
               </div>
             </form>
             <div id="active-queue-add-message" class="active-queue-add-message" aria-live="polite"></div>
-          </div>
+          </details>
           <dialog id="active-queue-dialog" class="panel queue-panel queue-editor-dialog">
             <div class="panel-head">
               <h2>Queue</h2>
