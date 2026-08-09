@@ -155,10 +155,14 @@ input[type=number] {
 .app-footer {
   margin-top: 6px;
   text-align: center;
-  color: var(--muted);
-  font-size: 0.78rem;
-  letter-spacing: 0.02em;
+  font-size: 0.7rem;
+  padding: 0.5rem 0 0.75rem;
+  pointer-events: none;
+  user-select: none;
 }
+
+.app-footer-brand { color: #f5a623; font-weight: 600; }
+#app-footer-copy { color: #9ca3af; }
 
 .admin-shell {
   padding-bottom: 8px;

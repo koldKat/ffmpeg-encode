@@ -1,6 +1,7 @@
 import { createActiveQueueAdder } from './active-queue-add.js';
 
 const TOKEN_KEY = 'ffmpeg_webapp_token';
+const FOOTER_START_YEAR = 2026;
 
 const els = {
   loginScreen: document.getElementById('login-screen'),
@@ -80,7 +81,13 @@ const els = {
   applyAudioTrackBtn: document.getElementById('apply-audio-track-btn'),
   recentList: document.getElementById('recent-list'),
   logList: document.getElementById('log-list'),
+  footerCopy: document.getElementById('app-footer-copy'),
 };
+
+const footerYear = new Date().getFullYear();
+els.footerCopy.textContent = footerYear > FOOTER_START_YEAR
+  ? `© ${FOOTER_START_YEAR}-${footerYear}`
+  : `© ${FOOTER_START_YEAR}`;
 
 let eventSource = null;
 let hydratedConfig = false;
