@@ -149,14 +149,14 @@ input[type=number] {
 
 .app-shell {
   width: min(1520px, calc(100vw - 32px));
-  margin: 6px auto 10px;
+  margin: 6px auto 0;
 }
 
 .app-footer {
   margin-top: 6px;
   text-align: center;
   font-size: 0.7rem;
-  padding: 0.5rem 0 0.75rem;
+  padding: 0.5rem 0 0;
   pointer-events: none;
   user-select: none;
 }
@@ -659,6 +659,10 @@ input[type=number] {
 }
 
 @media (min-width: 1181px) {
+  .dashboard-grid > .queue-panel:not(.queue-editor-dialog) {
+    min-height: 450px;
+  }
+
   .log-panel {
     contain: size;
     overflow: hidden;
