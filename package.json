@@ -4,7 +4,8 @@
   "description": "Web UI for FFmpeg batch two-pass encode jobs",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.3"

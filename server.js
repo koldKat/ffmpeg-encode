@@ -5,11 +5,14 @@ const os = require('os');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
 const db = require('./server/db');
+const { QueueAppendError, discoverAppendableFiles } = require('./server/queue-append');
+const { QueueInspectionStore } = require('./server/queue-inspections');
+const { ActiveQueueOrderError, reorderActiveQueue } = require('./server/active-queue-order');
+const { writeVersionFileAtomic } = require('./server/app-version');
 
 const PORT = Number(process.env.PORT || 3017);
 const ROOT = path.join(__dirname, 'public');
 const REMOTE_USERNAME = 'koldKat';
-const APP_VERSION_FALLBACK = '1.0.9';
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -22,6 +25,7 @@ const SSE_CLIENTS = new Set();
 const QUEUE_PREVIEW_LIMIT = 50;
 const MACHINE_NAME = os.hostname();
 const MAX_EVENT_MESSAGE_LENGTH = 420;
+const queueInspections = new QueueInspectionStore();
 
 const DEFAULTS = {
   sourceRoot: '.',
@@ -46,6 +50,7 @@ let pauseRequested = false;
 let runnerPromise = null;
 let activeRunId = null;
 let activeUserId = null;
+let activeQueuePath = null;
 let shutdownInProgress = false;
 let lastBatchSummary = null;
 let lastCpuSample = null;
@@ -333,7 +338,7 @@ function createState() {
   return {
     app: {
       name: 'FFmpeg Batch Encode',
-      version: db.getAppVersion(APP_VERSION_FALLBACK),
+      version: db.getAppVersion('N/A'),
       remoteUsername: REMOTE_USERNAME,
       machineName: MACHINE_NAME,
       cpuCount: os.cpus().length,
@@ -1442,10 +1447,11 @@ async function runJob(rawConfig, session, queueItems = null) {
     persistRun();
     pushEvent(`Found ${queueSeed.length} file(s). Starting encode job.`);
 
-    for (let i = 0; i < queueSeed.length; i += 1) {
+    for (let i = 0; i < state.queue.length; i += 1) {
       if (stopRequested) throw new Error('stopped');
       if (stopAfterCurrentRequested) throw new Error('stopped-after-current');
-      await encodeFile(state.queue[i], i + 1, queueSeed.length, config);
+      activeQueuePath = state.queue[i].fullPath;
+      await encodeFile(state.queue[i], i + 1, state.queue.length, config);
       if (stopAfterCurrentRequested) throw new Error('stopped-after-current');
     }
 
@@ -1504,6 +1510,7 @@ async function runJob(rawConfig, session, queueItems = null) {
     captureLastBatchSummary();
   } finally {
     currentChild = null;
+    activeQueuePath = null;
     pauseRequested = false;
     activeRunId = null;
     state.lifetime = db.getLifetimeStats();
@@ -1733,6 +1740,174 @@ async function handleQueue(req, res, url = null) {
   send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(getPersistedConfig(session.user_id)) });
 }
 
+async function discoverActiveQueuePaths(rawPath) {
+  return discoverAppendableFiles({
+    requestedPath: expandHome(rawPath),
+    sourceRoot: state.config.sourceRoot,
+    stagingRoot: state.config.outRoot,
+    existingPaths: state.queue.map(item => item.fullPath),
+    videoExtensions: VIDEO_EXTS,
+  });
+}
+
+async function handleQueueInspect(req, res) {
+  const session = await authenticate(req, res);
+  if (!session) return;
+  if (!authorizeApp(session, res)) return;
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+    send(res, 409, { error: 'Files can only be appended to your active batch.' });
+    return;
+  }
+
+  const body = await readBody(req);
+  const rawPath = String(body.path || '').trim();
+  if (!rawPath) {
+    send(res, 400, { error: 'A file or folder path is required.' });
+    return;
+  }
+
+  let uniquePaths;
+  try {
+    uniquePaths = await discoverActiveQueuePaths(rawPath);
+  } catch (error) {
+    const status = error instanceof QueueAppendError ? error.status : 500;
+    send(res, status, { error: error.message || 'Unable to inspect the requested path.' });
+    return;
+  }
+
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+    send(res, 409, { error: 'The active batch ended before the files could be added.' });
+    return;
+  }
+
+  const items = uniquePaths.map((filePath, index) => createQueueItem(
+    filePath,
+    index + 1,
+    state.config,
+    { saveTo: path.dirname(filePath) },
+  ));
+  await enrichQueueAudioTracks(items);
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+    send(res, 409, { error: 'The active batch ended while the files were being inspected.' });
+    return;
+  }
+  if (!items.length) {
+    send(res, 200, { ok: true, inspectionId: null, found: 0, items: [] });
+    return;
+  }
+  const inspectionId = queueInspections.create(session.user_id, {
+    sourceRoot: state.config.sourceRoot,
+    items,
+  });
+  send(res, 200, { ok: true, inspectionId, found: items.length, items });
+}
+
+async function handleQueueAppend(req, res) {
+  const session = await authenticate(req, res);
+  if (!session) return;
+  if (!authorizeApp(session, res)) return;
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+    send(res, 409, { error: 'Files can only be appended to your active batch.' });
+    return;
+  }
+
+  const body = await readBody(req);
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+    send(res, 409, { error: 'The active batch ended before the files could be added.' });
+    return;
+  }
+  const inspection = queueInspections.consume(body.inspectionId, session.user_id);
+  if (!inspection || inspection.sourceRoot !== state.config.sourceRoot) {
+    send(res, 409, { error: 'The inspection expired or is no longer valid. Inspect the path again.' });
+    return;
+  }
+
+  const currentPaths = new Set(state.queue.map(item => path.resolve(item.fullPath)));
+  const inspectedItems = inspection.items.filter(item => fs.existsSync(item.fullPath));
+  const requestedItems = Array.isArray(body.items) ? body.items : [];
+  const inspectedByPath = new Map(inspectedItems.map(item => [item.fullPath, item]));
+  const requestedPaths = requestedItems.map(item => String(item?.fullPath || ''));
+  if (!requestedItems.length
+    || new Set(requestedPaths).size !== requestedPaths.length
+    || requestedPaths.some(filePath => !inspectedByPath.has(filePath))) {
+    send(res, 400, { error: 'The configured files do not match the inspection.' });
+    return;
+  }
+
+  const pendingRequestedItems = requestedItems
+    .filter(item => !currentPaths.has(path.resolve(item.fullPath)));
+  if (!pendingRequestedItems.length) {
+    send(res, 200, { ok: true, added: 0, state: clonePublicState(state.config) });
+    return;
+  }
+
+  const newItems = pendingRequestedItems.map((requestedItem, index) => {
+    const inspectedItem = inspectedByPath.get(requestedItem.fullPath);
+    const rawTune = String(requestedItem.tune || '').trim();
+    const rawSaveTo = String(requestedItem.saveTo || '').trim();
+    const rawAudioTrack = String(requestedItem.audioTrack || '').trim();
+    const requestedAudioTrack = /^\d+$/.test(rawAudioTrack) ? normalizeAudioTrack(rawAudioTrack, 0) : null;
+    return createQueueItem(
+      requestedItem.fullPath,
+      state.queue.length + index + 1,
+      state.config,
+      {
+        tune: rawTune || state.config.tune,
+        saveTo: rawSaveTo || path.dirname(inspectedItem.fullPath),
+        audioTrack: requestedAudioTrack == null
+          ? resolveAudioTrackByLanguage(inspectedItem, rawAudioTrack)
+          : (inspectedItem.audioTracks.some(track => track.index === requestedAudioTrack) ? requestedAudioTrack : 0),
+        audioTracks: inspectedItem.audioTracks,
+      },
+    );
+  });
+
+  state.queue.push(...newItems);
+  state.counts.total = state.queue.length;
+  state.scan.found = state.queue.length;
+  state.queueInfo = {
+    total: state.queue.length,
+    visible: Math.min(state.queue.length, QUEUE_PREVIEW_LIMIT),
+    hidden: Math.max(0, state.queue.length - QUEUE_PREVIEW_LIMIT),
+  };
+  if (state.currentFile) state.currentFile.total = state.queue.length;
+  computeDerivedTotals();
+  saveQueuePlan(session.user_id, state.config, state.queue);
+  persistRun();
+  pushEvent(`Added ${newItems.length} file(s) to the active queue.`);
+
+  send(res, 200, { ok: true, added: newItems.length, state: clonePublicState(state.config) });
+}
+
+async function handleActiveQueueOrder(req, res) {
+  const session = await authenticate(req, res);
+  if (!session) return;
+  if (!authorizeApp(session, res)) return;
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id || !activeQueuePath) {
+    send(res, 409, { error: 'The active queue is not currently reorderable.' });
+    return;
+  }
+
+  const body = await readBody(req);
+  const requestedOrder = Array.isArray(body.order) ? body.order.map(String) : [];
+  try {
+    state.queue = reorderActiveQueue({
+      queue: state.queue,
+      publicPaths: getPublicQueue().map(item => item.fullPath),
+      activePath: activeQueuePath,
+      requestedOrder,
+    });
+  } catch (error) {
+    const status = error instanceof ActiveQueueOrderError ? error.status : 500;
+    send(res, status, { error: error.message || 'Unable to reorder the active queue.' });
+    return;
+  }
+  saveQueuePlan(session.user_id, state.config, state.queue);
+  persistRun();
+  pushEvent('Reordered pending files in the active queue.');
+  send(res, 200, { ok: true, state: clonePublicState(state.config) });
+}
+
 async function handleStart(req, res) {
   const session = await authenticate(req, res);
   if (!session) return;
@@ -1882,7 +2057,7 @@ async function handleAdminState(req, res) {
   send(res, 200, {
     app: {
       name: state.app?.name || 'FFmpeg Batch Encode',
-      version: db.getAppVersion(APP_VERSION_FALLBACK),
+      version: db.getAppVersion('N/A'),
       remoteUsername: REMOTE_USERNAME,
       machineName: MACHINE_NAME,
       cpuCount: os.cpus().length,
@@ -1947,15 +2122,43 @@ async function handleAdminDeleteUser(req, res) {
   send(res, 200, { ok: true, users: db.listUsers() });
 }
 
+function saveManualAppVersion(version) {
+  const previousVersion = db.getAppVersion('');
+  db.setAppVersion(version);
+  try {
+    writeVersionFileAtomic(version);
+  } catch (error) {
+    if (previousVersion) db.setAppVersion(previousVersion);
+    else db.clearAppVersion();
+    throw error;
+  }
+  state.app.version = version;
+  publish();
+}
+
 async function handleAdminVersion(req, res) {
   if (!authorizeLocalAdmin(req, res)) return;
   const body = await readBody(req);
   try {
     const version = sanitizeAdminVersion(body.version);
-    db.setAppVersion(version);
-    state.app.version = version;
-    publish();
+    saveManualAppVersion(version);
     send(res, 200, { ok: true, version });
+  } catch (error) {
+    send(res, 400, { error: error.message });
+  }
+}
+
+async function handleAdminSettings(req, res) {
+  if (!authorizeLocalAdmin(req, res)) return;
+  const body = await readBody(req);
+  if (body.key !== 'app_version') {
+    send(res, 400, { error: 'Unsupported admin setting.' });
+    return;
+  }
+  try {
+    const version = sanitizeAdminVersion(body.value);
+    saveManualAppVersion(version);
+    send(res, 200, { ok: true, key: 'app_version', value: version, version });
   } catch (error) {
     send(res, 400, { error: error.message });
   }
@@ -2019,6 +2222,10 @@ const server = http.createServer(async (req, res) => {
       await handleAdminVersion(req, res);
       return;
     }
+    if (req.method === 'POST' && url.pathname === '/api/admin/settings') {
+      await handleAdminSettings(req, res);
+      return;
+    }
     if (req.method === 'POST' && url.pathname === '/api/register') {
       await handleRegister(req, res);
       return;
@@ -2045,6 +2252,18 @@ const server = http.createServer(async (req, res) => {
     }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/queue') {
       await handleQueue(req, res, url);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/queue/append') {
+      await handleQueueAppend(req, res);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/queue/inspect') {
+      await handleQueueInspect(req, res);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/queue/reorder-active') {
+      await handleActiveQueueOrder(req, res);
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/path-suggest') {

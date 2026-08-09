@@ -89,6 +89,28 @@ Queue plan persistence:
 - failed files remain in the saved plan
 - if source subfolders become empty and are removed, the saved plan is cleaned up to match
 
+## Adding Files During A Run
+
+While a batch is active, the Queue card shows an append panel. Enter a supported video file or a folder inside the active source root, then press `Inspect`. A folder is scanned recursively and its new supported files are probed before anything is added.
+
+Inspection opens a queue-editor dialog matching the main Queue panel, with one selectable row per discovered file. In that dialog you can:
+- select any individual files, or use `Select All` and `Clear`
+- apply `Tune`, audio language/track, and save destination to the selected rows with the same bulk toolbar used by the main Queue panel
+- choose audio suggestions derived only from the inspected files' metadata
+- remove files you do not want to append
+- drag files into their initial processing order
+
+Press `Add to Queue` to append the remaining configured rows in their displayed order. Inspections expire after ten minutes and are single-use.
+
+- Existing queue paths are ignored, so the same file is not added twice.
+- The staging folder and paths outside the active source root are rejected.
+- Blank settings fall back to the active batch tune, audio track `0`, and each file's source folder.
+- Added files are persisted immediately with the remaining queue and survive a server restart.
+- The batch total, overall progress, and ETA are recalculated as soon as files are added. The percentage may decrease because the batch now contains more work.
+- During encoding, the current file is locked in place but every visible pending file can be dragged into a new order. Loaded pending entries are reordered without moving unseen entries ahead of them.
+- Removing or changing settings on files already in the active queue remains disabled; configure new files in the dialog before appending them.
+- If `Stop After Current File` is enabled, the current file still finishes and the newly added files remain saved for a later run.
+
 ## What Happens During Encoding
 
 For each file:
@@ -153,7 +175,7 @@ Shows the active file, pass, speed, frame rate, frames, ETA/finish time, size, a
 
 ### Queue
 - Before start: editable queue with selection controls
-- During run: live remaining queue preview without edit controls
+- During run: live remaining queue with the current encode locked, pending-file drag reorder, and a modal editor for new files
 - The browser renders 50 entries initially and appends 50 more for each separate scroll to the bottom.
 
 ### Latest Completed
@@ -172,6 +194,8 @@ The localhost-only admin panel at `/admin` can:
 - show hostname, user/session counts, RSS, heap memory, and current Node-plus-FFmpeg CPU usage
 
 `koldKat` is intentionally protected in the admin UI and admin API.
+
+Saving the app version remains a manual admin action. The same submitted value is stored in SQLite and mirrored to the repository-root `VERSION` file. There is no automatic version increment. On a fresh database only, the initial `app_version` value is seeded by reading `VERSION`; an existing database value always wins on boot.
 
 Admin resource cards refresh every second. CPU percentage is normalized to the full machine capacity, so it remains in the human-readable `0-100%` range.
 

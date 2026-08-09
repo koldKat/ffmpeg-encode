@@ -182,9 +182,9 @@ async function saveVersion() {
   els.versionMsg.textContent = '';
   try {
     const nextVersion = els.versionInput.value.trim();
-    const data = await apiFetch('/api/admin/version', {
+    const data = await apiFetch('/api/admin/settings', {
       method: 'POST',
-      body: JSON.stringify({ version: nextVersion }),
+      body: JSON.stringify({ key: 'app_version', value: nextVersion }),
     });
     versionDirty = false;
     els.versionInput.value = data.version || nextVersion;

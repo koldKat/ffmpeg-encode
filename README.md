@@ -21,6 +21,7 @@ Test with disposable media and verify all source, staging, and destination paths
 - Pause/resume, immediate stop, and stop-after-current controls
 - Queue, completed-file, and log lists loaded in batches for large runs
 - Persistent user settings, queue plans, sessions, run history, app version, and lifetime statistics in SQLite
+- Human-managed app version mirrored to `VERSION` whenever it is saved from the admin panel
 - Localhost-only administration dashboard for users, app version, CPU, and memory information
 - Server-Sent Events for live browser updates without polling the main run state
 

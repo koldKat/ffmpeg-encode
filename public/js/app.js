@@ -1,3 +1,5 @@
+import { createActiveQueueAdder } from './active-queue-add.js';
+
 const TOKEN_KEY = 'ffmpeg_webapp_token';
 
 const els = {
@@ -98,6 +100,7 @@ let lastState = null;
 let queueFetchInFlight = false;
 let lastQueueRenderKey = '';
 let dragState = null;
+let activeQueueAdder = null;
 const pathSuggestTimers = new Map();
 const QUEUE_DRAG_SCROLL_EDGE = 72;
 const QUEUE_DRAG_SCROLL_STEP = 28;
@@ -544,6 +547,16 @@ function reorderQueueUnits(queue, fromKey, toKey) {
   return orderedUnits.flatMap(unit => unit.filePaths.map(filePath => ({ ...itemsByPath.get(filePath) }))).filter(Boolean);
 }
 
+function reorderFlatQueue(queue, fromPath, toPath) {
+  const fromIndex = queue.findIndex(item => item.fullPath === fromPath);
+  const toIndex = queue.findIndex(item => item.fullPath === toPath);
+  if (fromIndex <= 0 || toIndex <= 0 || fromIndex === toIndex) return null;
+  const nextQueue = queue.map(item => ({ ...item }));
+  const [movedItem] = nextQueue.splice(fromIndex, 1);
+  nextQueue.splice(toIndex, 0, movedItem);
+  return nextQueue;
+}
+
 async function persistQueueOrder(order) {
   els.formError.textContent = '';
   const data = await apiFetch('/api/queue', {
@@ -552,6 +565,14 @@ async function persistQueueOrder(order) {
   });
   setFullQueue(data.queue || []);
   render(data.state);
+}
+
+async function persistActiveQueueOrder(order) {
+  const data = await apiFetch('/api/queue/reorder-active', {
+    method: 'POST',
+    body: JSON.stringify({ order }),
+  });
+  if (data.state) render(data.state, { forceQueue: true });
 }
 
 function updateQueueDragMarkers() {
@@ -731,7 +752,7 @@ function renderQueue(queue, info = {}, active = false) {
     status: item.status || 'pending',
   }));
 
-  els.queueList.innerHTML = renderItems.map(item => {
+  els.queueList.innerHTML = renderItems.map((item, itemIndex) => {
     const checked = isEditable && selectedTargets.has(item.key) ? 'checked' : '';
     const status = item.status || 'pending';
     const selectionControl = isEditable
@@ -745,7 +766,9 @@ function renderQueue(queue, info = {}, active = false) {
     const audioAvailable = item.type === 'file' || (Array.isArray(item.audioTracks) && item.audioTracks.length)
       ? `<span class="meta-chip audio-track-chip" title="${audioTitle}">available <strong>${escapeHtml(audioSummary.available)}</strong></span>`
       : '';
-    const dragHandle = isEditable
+    const isActivePending = active && itemIndex > 0;
+    const isReorderable = isEditable || isActivePending;
+    const dragHandle = isReorderable
       ? `<button type="button" class="queue-drag-handle" draggable="true" data-drag-key="${escapeHtml(item.key)}" aria-label="Drag to reorder" title="Drag to reorder">::</button>`
       : '';
     const removeControl = isEditable
@@ -754,11 +777,12 @@ function renderQueue(queue, info = {}, active = false) {
     const dragClasses = [
       'list-item',
       'queue-item',
-      isEditable ? '' : 'queue-item-static',
+      isReorderable ? '' : 'queue-item-static',
+      active && itemIndex === 0 ? 'queue-item-current-locked' : '',
     ].filter(Boolean).join(' ');
     const hoverPath = escapeHtml(item.hoverPath || item.subtitle || '');
     return `
-      <article class="${dragClasses}" ${isEditable ? `data-unit-key="${escapeHtml(item.key)}"` : ''}>
+      <article class="${dragClasses}" ${isReorderable || active ? `data-unit-key="${escapeHtml(item.key)}"` : ''}>
         ${selectionControl}
         ${dragHandle}
         <div class="queue-item-body">
@@ -867,7 +891,7 @@ function render(state, options = {}) {
   const machineName = state.app?.machineName || '';
   const cpuCount = Number(state.app?.cpuCount || 0);
   if (els.appEyebrow) {
-    els.appEyebrow.textContent = `Client + Server Encode Dashboard - version ${state.app?.version || 'N/A'}`;
+    els.appEyebrow.textContent = `Client + Server Encode Dashboard - ${state.app?.version || 'N/A'}`;
   }
   els.machineChip.textContent = machineName;
   els.machineChip.style.display = machineName ? 'inline-flex' : 'none';
@@ -919,6 +943,7 @@ function render(state, options = {}) {
   renderLifetime(state.lifetime || {});
 
   const active = Boolean(state.active);
+  activeQueueAdder?.render(state);
   if (!active && state.status === 'error' && state.message) {
     els.formError.textContent = state.message;
   } else if (active && els.formError.textContent === state.message) {
@@ -1353,7 +1378,6 @@ els.queueList.addEventListener('change', event => {
 });
 
 els.queueList.addEventListener('dragstart', event => {
-  if (lastState?.active) return;
   const target = event.target;
   if (!(target instanceof HTMLElement) || !target.classList.contains('queue-drag-handle')) return;
   const dragKey = target.dataset.dragKey;
@@ -1367,7 +1391,7 @@ els.queueList.addEventListener('dragstart', event => {
 });
 
 els.queueList.addEventListener('dragover', event => {
-  if (!dragState || lastState?.active) return;
+  if (!dragState) return;
   autoScrollQueueDuringDrag(event.clientY);
   const target = event.target instanceof Element ? event.target.closest('[data-unit-key]') : null;
   if (!(target instanceof HTMLElement)) {
@@ -1376,27 +1400,43 @@ els.queueList.addEventListener('dragover', event => {
   }
   event.preventDefault();
   const overKey = target.dataset.unitKey;
+  if (lastState?.active && overKey === activeQueue[0]?.fullPath) return;
   if (!overKey || overKey === dragState.overKey) return;
   dragState = { ...dragState, overKey };
   updateQueueDragMarkers();
 });
 
 els.queueList.addEventListener('drop', async event => {
-  if (!dragState || lastState?.active) return;
+  if (!dragState) return;
   event.preventDefault();
   const target = event.target instanceof Element ? event.target.closest('[data-unit-key]') : null;
   const dropKey = target instanceof HTMLElement ? target.dataset.unitKey : dragState.overKey;
-  const nextQueue = dropKey ? reorderQueueUnits(fullQueue, dragState.dragKey, dropKey) : null;
+  const active = Boolean(lastState?.active);
+  const nextQueue = dropKey
+    ? (active
+        ? reorderFlatQueue(activeQueue, dragState.dragKey, dropKey)
+        : reorderQueueUnits(fullQueue, dragState.dragKey, dropKey))
+    : null;
   const nextOrder = nextQueue ? nextQueue.map(item => item.fullPath) : null;
   clearQueueDragState();
   if (!nextQueue || !nextOrder) return;
-  setFullQueue(nextQueue);
+  if (active) activeQueue = nextQueue;
+  else setFullQueue(nextQueue);
   if (lastState) render(lastState, { forceQueue: true });
   try {
-    await persistQueueOrder(nextOrder);
+    if (active) await persistActiveQueueOrder(nextOrder);
+    else await persistQueueOrder(nextOrder);
   } catch (error) {
     els.formError.textContent = error.message;
-    await fetchFullQueue().catch(() => {});
+    if (active) {
+      const data = await apiFetch('/api/queue?offset=0&limit=200').catch(() => null);
+      if (data) {
+        resetActiveQueue(data.queue || []);
+        if (data.state) render(data.state, { forceQueue: true });
+      }
+    } else {
+      await fetchFullQueue().catch(() => {});
+    }
   }
 });
 
@@ -1438,5 +1478,14 @@ wirePagedList(
 wirePathAutocomplete(els.sourceRoot, els.sourceRootList);
 wirePathAutocomplete(els.outRoot, els.outRootList);
 wirePathAutocomplete(els.bulkSaveTo, els.bulkSaveToList);
+
+activeQueueAdder = createActiveQueueAdder({
+  apiFetch,
+  wirePathAutocomplete,
+  onState(state) {
+    resetActiveQueue(state.queue || []);
+    render(state, { forceQueue: true });
+  },
+});
 
 boot();

@@ -10,7 +10,12 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | --- | --- |
 | `server.js` | HTTP routing, auth gates, global run state, queue orchestration, FFmpeg execution, progress, file promotion, and SSE |
 | `server/db.js` | SQLite schema, migrations, users, sessions, settings, queue plans, run snapshots, metadata, and lifetime aggregates |
+| `server/queue-append.js` | Active-run path containment, recursive supported-file discovery, and duplicate filtering |
+| `server/queue-inspections.js` | Short-lived, user-scoped, single-use storage for probed append candidates |
+| `server/active-queue-order.js` | Validates and applies active pending-prefix reorder operations without moving the current encode |
+| `server/app-version.js` | Reads the boot seed and atomically mirrors manually saved app versions to `VERSION` |
 | `public/js/app.js` | Login, setup form, queue editor, lazy list rendering, SSE client, and main dashboard |
+| `public/js/active-queue-add.js` | Active-run queue append form, request state, and user feedback |
 | `public/js/admin.js` | Local admin dashboard, one-second resource refresh, user management, and version editing |
 | `public/index.html` | Main application markup |
 | `public/admin.html` | Local admin markup |
@@ -148,6 +153,18 @@ Persisted entries whose files no longer exist are cleaned when the plan is loade
 
 Folder grouping is frontend presentation only. Root-level files are individual selection units. Deeper files are grouped by relative directory. Bulk operations send every underlying file path; the server stores individual queue items.
 
+### Active-run append
+
+`POST /api/queue/inspect` accepts a file or directory path, requires the authenticated user to own the active run, and delegates filesystem policy to `server/queue-append.js`. It probes candidate audio metadata and stores the result in `server/queue-inspections.js` under a random, user-scoped, single-use token with a ten-minute lifetime.
+
+Discovery is restricted to the active source root using both lexical and real-path containment, excludes the staging root, recursively includes the standard video extensions, resolves duplicate paths, and removes paths already present in the internal queue.
+
+The browser presents inspected files in a modal that reuses the Queue panel's selection, bulk-apply, remove, and drag-order interaction model. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio choices are resolved per file from the probed metadata; a missing language or numeric track falls back to track `0`. Blank tune and destination values fall back to the active tune and that file's source directory.
+
+The append coordinator immediately updates `counts.total`, scan and queue totals, the current-file denominator, derived progress, the persisted queue plan, and the active run snapshot. The runner loop reads `state.queue.length` on every iteration rather than retaining the original scan length, so appended entries are processed in the same run.
+
+Before each `encodeFile()` call, the runner records `activeQueuePath`. `POST /api/queue/reorder-active` requires that path to remain first in the submitted public-queue prefix and only reorders the pending suffix represented by the browser's currently loaded pages. Completed internal entries and the selected encode remain fixed. The endpoint performs validation and mutation synchronously, then persists and publishes the new order.
+
 ### Queue persistence
 
 Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed`; other unfinished states normalize to `pending`. Full path, tune, destination, audio index, and audio metadata are retained.
@@ -194,7 +211,7 @@ A reverse proxy connecting from localhost can unintentionally make remote reques
 2. Current idle queue when its source root matches.
 3. Fresh recursive discovery inside `runJob()`.
 
-`runJob()` clears the last-summary overlay, resets runtime state, creates a `job_runs` row, marks the run `scanning`, and publishes. It loads and saves the queue, changes to `running`, and processes files sequentially.
+`runJob()` clears the last-summary overlay, resets runtime state, creates a `job_runs` row, marks the run `scanning`, and publishes. It loads and saves the queue, changes to `running`, and processes files sequentially. Its loop uses the current queue length so append requests accepted before the loop drains become part of the active run.
 
 ### Per-file encoding
 
@@ -339,6 +356,9 @@ All require authentication and the protected username.
 | `POST /api/queue` | `{ filePaths, tune }` | Applies tune |
 | `POST /api/queue` | `{ filePaths, saveTo }` | Applies expanded destination |
 | `POST /api/queue` | `{ filePaths, audioTrack }` | Applies numeric index or resolves language per file |
+| `POST /api/queue/inspect` | `{ path }` | Discovers and probes append candidates; returns files, derived audio metadata, and a short-lived inspection token |
+| `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, tune, audioTrack, saveTo }] }` | Consumes an inspection and appends the ordered, individually configured subset |
+| `POST /api/queue/reorder-active` | `{ order: [visibleFullPath...] }` | Reorders the loaded pending prefix while requiring the current encode to remain first |
 | `POST /api/start` | config object | Starts asynchronous batch; returns immediate state |
 | `POST /api/pause-toggle` | optional `{ enabled }` | Pauses or resumes active FFmpeg |
 | `POST /api/stop-after-current` | optional `{ enabled }` | Toggles graceful stop |
@@ -355,7 +375,8 @@ All require authentication and the protected username.
 | `POST /api/admin/users` | `{ username, password }` | Creates user |
 | `POST /api/admin/users/password` | `{ username, password }` | Resets unprotected user password |
 | `POST /api/admin/users/delete` | `{ username }` | Deletes unprotected user and cascaded rows |
-| `POST /api/admin/version` | `{ version }` | Persists and publishes display version |
+| `POST /api/admin/settings` | `{ key: "app_version", value }` | Manually persists, mirrors to `VERSION`, and publishes the display version |
+| `POST /api/admin/version` | `{ version }` | Backward-compatible version save using the same SQLite and `VERSION` dual-write path |
 
 Versions are trimmed, limited to 40 characters, allow Unicode such as `0.2.6.2 Î±`, and reject control characters and newlines.
 
@@ -370,7 +391,7 @@ Versions are trimmed, limited to 40 characters, allow Unicode such as `0.2.6.2 Î
 | `user_settings` | `(user_id, machine_name)` | Config JSON and update time |
 | `user_queue_plans` | `(user_id, machine_name)` | Source root, remaining queue JSON, update time |
 | `job_runs` | `id` | Status, paths, counts, byte/timing totals, timestamps |
-| `app_meta` | key | Global values such as `app_version` |
+| `app_meta` | key | Global values such as `app_version`; a missing fresh-DB value is seeded once from `VERSION` |
 
 User foreign keys cascade deletes to sessions, settings, plans, and runs.
 

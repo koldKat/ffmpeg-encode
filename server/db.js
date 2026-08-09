@@ -2,6 +2,7 @@ const path = require('path');
 const crypto = require('crypto');
 const util = require('util');
 const Database = require('better-sqlite3');
+const { readVersionFile } = require('./app-version');
 
 const scrypt = util.promisify(crypto.scrypt);
 const db = new Database(path.join(__dirname, '..', 'database.sqlite'));
@@ -73,6 +74,17 @@ db.exec(`
     updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   );
 `);
+
+const storedAppVersion = db.prepare("SELECT value FROM app_meta WHERE key = 'app_version'").get();
+if (!storedAppVersion) {
+  const fileVersion = readVersionFile();
+  if (fileVersion) {
+    db.prepare(`
+      INSERT INTO app_meta (key, value, updated_at)
+      VALUES ('app_version', ?, strftime('%s', 'now'))
+    `).run(fileVersion);
+  }
+}
 
 try {
   db.exec("ALTER TABLE job_runs ADD COLUMN updated_at INTEGER");
@@ -379,6 +391,10 @@ function setAppVersion(version) {
   setAppMeta('app_version', version);
 }
 
+function clearAppVersion() {
+  db.prepare("DELETE FROM app_meta WHERE key = 'app_version'").run();
+}
+
 function getLifetimeStats() {
   const totals = db.prepare(`
     SELECT
@@ -465,4 +481,5 @@ module.exports = {
   getLifetimeStats,
   getAppVersion,
   setAppVersion,
+  clearAppVersion,
 };

@@ -258,6 +258,62 @@
               <option value="placebo"></option>
             </datalist>
           </div>
+          <div class="active-queue-add" id="active-queue-add" hidden>
+            <form id="active-queue-inspect-form" class="active-queue-add-form">
+              <label for="active-queue-path">Add file or folder from the active source</label>
+              <div class="active-queue-add-row">
+                <div class="path-input-wrap">
+                  <input type="text" id="active-queue-path" placeholder="/path/inside/source" autocomplete="off">
+                  <div id="path-suggestions-active-queue" class="path-suggestions-menu" hidden></div>
+                </div>
+                <button type="submit" id="active-queue-inspect-btn" class="ghost-btn small-btn">Inspect</button>
+              </div>
+            </form>
+            <div id="active-queue-add-message" class="active-queue-add-message" aria-live="polite"></div>
+          </div>
+          <dialog id="active-queue-dialog" class="panel queue-panel queue-editor-dialog">
+            <div class="panel-head">
+              <h2>Queue</h2>
+              <span id="active-queue-dialog-count" class="panel-kicker"></span>
+            </div>
+            <div class="queue-bulk-tools queue-editor-tools">
+              <div class="queue-toolbar">
+                <span id="active-dialog-selection-count" class="queue-selection-count">0 selected</span>
+                <div class="queue-toolbar-actions">
+                  <button type="button" id="active-dialog-select-all" class="ghost-btn small-btn">Select All</button>
+                  <button type="button" id="active-dialog-clear" class="ghost-btn small-btn">Clear</button>
+                </div>
+              </div>
+              <div class="queue-bulk-grid">
+                <div class="queue-bulk-labels">
+                  <span>Apply tune</span>
+                  <span>Apply audio language / track</span>
+                  <span>Apply save folder</span>
+                </div>
+                <div class="queue-bulk-fields">
+                  <input type="text" id="active-dialog-tune" list="tune-options" placeholder="film">
+                  <input type="text" id="active-dialog-audio" list="active-dialog-audio-options" value="0" placeholder="language or track">
+                  <div class="path-input-wrap">
+                    <input type="text" id="active-dialog-save" placeholder="/path/to/output" autocomplete="off">
+                    <div id="path-suggestions-active-dialog-save" class="path-suggestions-menu" hidden></div>
+                  </div>
+                </div>
+                <div class="queue-bulk-actions">
+                  <button type="button" id="active-dialog-apply-tune" class="ghost-btn small-btn">Apply Tune</button>
+                  <button type="button" id="active-dialog-apply-audio" class="ghost-btn small-btn">Apply Audio</button>
+                  <button type="button" id="active-dialog-apply-save" class="ghost-btn small-btn">Apply Save Folder</button>
+                </div>
+              </div>
+              <datalist id="active-dialog-audio-options"></datalist>
+            </div>
+            <div id="active-queue-dialog-list" class="stack-list queue-editor-list"></div>
+            <div class="queue-editor-dialog-foot">
+              <div class="queue-editor-dialog-actions">
+                <button type="button" id="active-queue-dialog-cancel" class="ghost-btn small-btn">Cancel</button>
+                <button type="button" id="active-queue-dialog-add" class="primary-btn small-btn">Add to Queue</button>
+              </div>
+            </div>
+          </dialog>
           <div id="queue-list" class="stack-list"></div>
         </section>
 
