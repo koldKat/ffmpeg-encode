@@ -647,10 +647,6 @@ input[type=number] {
   max-height: none;
 }
 
-.log-panel .log-item {
-  flex: 1 0 auto;
-}
-
 @media (min-width: 1181px) {
   .log-panel {
     contain: size;
