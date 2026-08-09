@@ -565,8 +565,8 @@ input[type=number] {
 .queue-bulk-actions .ghost-btn {
   width: 100%;
 }
-.recent-panel { grid-column: span 6; }
-.log-panel { grid-column: span 6; }
+.recent-panel { grid-column: span 6; min-width: 0; }
+.log-panel { grid-column: span 6; min-width: 0; }
 
 .config-grid {
   display: grid;
@@ -943,12 +943,16 @@ input[type=number] {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  min-width: 0;
   max-height: 420px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 0.15rem;
 }
 
 .list-item, .log-item {
+  min-width: 0;
+  max-width: 100%;
   padding: 0.58rem 0.68rem;
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.76);
@@ -1087,6 +1091,13 @@ input[type=number] {
   align-items: center;
   justify-content: space-between;
   gap: 0.55rem;
+  min-width: 0;
+}
+
+.log-item-head > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .list-item-title {
@@ -1094,6 +1105,7 @@ input[type=number] {
   line-height: 1.25;
   font-size: 0.88rem;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .list-item-sub, .log-item-sub {
