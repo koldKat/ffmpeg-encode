@@ -651,6 +651,17 @@ input[type=number] {
   flex: 1 0 auto;
 }
 
+@media (min-width: 1181px) {
+  .log-panel {
+    contain: size;
+    overflow: hidden;
+  }
+
+  .log-panel .log-list {
+    overflow-y: auto;
+  }
+}
+
 .config-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
