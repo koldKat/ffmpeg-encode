@@ -66,6 +66,7 @@ Only one batch can run across the whole server. Media probing during an editable
 | `x264Profile` | `high` | H.264 profile |
 | `x264Level` | `4.1` | H.264 level |
 | `encThreads` | `0` | Explicit FFmpeg threads; zero leaves it unset |
+| `deleteSource` | `false` | Global source-deletion selection and default for newly discovered files |
 
 `sourceRoot`, `outRoot`, and per-item `saveTo` expand a leading `~` against the server process home. These are server filesystem paths even when the browser is remote.
 
@@ -118,6 +119,7 @@ An internal queue item resembles:
   "tune": "animation",
   "saveTo": "/media/encoded/show",
   "audioTrack": 1,
+  "deleteSource": false,
   "audioTracks": [
     {
       "index": 0,
@@ -159,7 +161,7 @@ Folder grouping is frontend presentation only. Root-level files are individual s
 
 Discovery is restricted to the active source root using both lexical and real-path containment, excludes the staging root, recursively includes the standard video extensions, resolves duplicate paths, and removes paths already present in the internal queue.
 
-The browser presents inspected files in a modal that reuses the Queue panel's selection, bulk-apply, remove, and drag-order interaction model. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio choices are resolved per file from the probed metadata; a missing language or numeric track falls back to track `0`. Blank tune and destination values fall back to the active tune and that file's source directory.
+The browser presents inspected files in a modal that reuses the Queue panel's selection, bulk-apply, remove, and drag-order interaction model. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings, including `deleteSource`. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio choices are resolved per file from the probed metadata; a missing language or numeric track falls back to track `0`. Blank tune and destination values fall back to the active tune and that file's source directory.
 
 The append coordinator immediately updates `counts.total`, scan and queue totals, the current-file denominator, derived progress, the persisted queue plan, and the active run snapshot. The runner loop reads `state.queue.length` on every iteration rather than retaining the original scan length, so appended entries are processed in the same run.
 
@@ -167,7 +169,7 @@ Before each `encodeFile()` call, the runner records `activeQueuePath`. `POST /ap
 
 ### Queue persistence
 
-Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed`; other unfinished states normalize to `pending`. Full path, tune, destination, audio index, and audio metadata are retained.
+Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed`; other unfinished states normalize to `pending`. Full path, tune, destination, audio index, audio metadata, and `deleteSource` are retained. The global deletion setting is stored in per-machine user settings; the per-file values are stored in the queue-plan JSON.
 
 The runner saves the plan after skips, failures, successful encodes, edits, and run termination. It preserves remaining work, not pass-level execution state.
 
@@ -294,9 +296,9 @@ Speed is media duration divided by encode wall time. Average bitrate is output b
 
 `promoteStageFile()` first tries `rename()`. On `EXDEV`, it copies to `<final>.part-<pid>-<timestamp>`, reports bytes roughly every 100 ms, renames the complete temporary file, deletes the staged source, and cleans the temporary file after failure.
 
-After successful promotion, the original is deleted whenever `finalPath !== filePath`. Empty source directories are removed only while descendants of `sourceRoot`; the source root is never removed.
+After successful promotion, the original is deleted only when that queue item's persisted `deleteSource` value is true. Empty source directories are removed only while descendants of `sourceRoot`; the source root is never removed.
 
-An MP4 whose final path exactly equals its source is replaced through staging without a separate source unlink.
+An MP4 whose final path exactly equals its source is replaced through staging only when deletion is selected. Otherwise `finalOutputPath()` chooses `<basename>.encoded.mp4` so promotion cannot overwrite the original.
 
 ## Pause, Stop, Shutdown, And Restart
 
@@ -357,7 +359,8 @@ All require authentication and the protected username.
 | `POST /api/queue` | `{ filePaths, saveTo }` | Applies expanded destination |
 | `POST /api/queue` | `{ filePaths, audioTrack }` | Applies numeric index or resolves language per file |
 | `POST /api/queue/inspect` | `{ path }` | Discovers and probes append candidates; returns files, derived audio metadata, and a short-lived inspection token |
-| `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, tune, audioTrack, saveTo }] }` | Consumes an inspection and appends the ordered, individually configured subset |
+| `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, tune, audioTrack, saveTo, deleteSource }] }` | Consumes an inspection and appends the ordered, individually configured subset |
+| `POST /api/queue/delete-source` | `{ filePaths, deleteSource, all }` | Persists global or per-file source deletion; the active file is immutable |
 | `POST /api/queue/reorder-active` | `{ order: [visibleFullPath...] }` | Reorders the loaded pending prefix while requiring the current encode to remain first |
 | `POST /api/start` | config object | Starts asynchronous batch; returns immediate state |
 | `POST /api/pause-toggle` | optional `{ enabled }` | Pauses or resumes active FFmpeg |

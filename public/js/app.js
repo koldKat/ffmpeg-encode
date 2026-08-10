@@ -30,6 +30,7 @@ const els = {
   overheadPct: document.getElementById('overhead-pct'),
   encThreadsLabel: document.getElementById('enc-threads-label'),
   encThreads: document.getElementById('enc-threads'),
+  deleteAllSources: document.getElementById('delete-all-sources'),
   scanBtn: document.getElementById('scan-btn'),
   startBtn: document.getElementById('start-btn'),
   pauseLabel: document.getElementById('pause-label'),
@@ -332,6 +333,7 @@ function setConfigInputs(config, force = false) {
   els.minVideoKbit.value = config.minVideoKbit ?? 300;
   els.overheadPct.value = config.overheadPct ?? 1;
   els.encThreads.value = config.encThreads ?? 0;
+  els.deleteAllSources.checked = config.deleteSource === true;
   hydratedConfig = true;
 }
 
@@ -347,6 +349,7 @@ function configFromForm() {
     minVideoKbit: Number(els.minVideoKbit.value),
     overheadPct: Number(els.overheadPct.value),
     encThreads: Number(els.encThreads.value),
+    deleteSource: els.deleteAllSources.checked,
   };
 }
 
@@ -474,6 +477,12 @@ function getQueueSelectionUnits(queue = fullQueue, state = lastState) {
         audioTrack: item.audioTrack ?? 0,
         audioTracks: item.audioTracks || [],
         status: item.status || 'pending',
+        deleteSource: item.deleteSource === true,
+        deleteSourceItems: [{
+          fullPath: item.fullPath,
+          name: item.name,
+          deleteSource: item.deleteSource === true,
+        }],
       });
       continue;
     }
@@ -492,6 +501,7 @@ function getQueueSelectionUnits(queue = fullQueue, state = lastState) {
         audioTrackValues: new Set(),
         audioTrackLists: [],
         statuses: new Set(),
+        deleteSourceValues: [],
       };
       folderMap.set(relDir, unit);
       units.push(unit);
@@ -502,6 +512,11 @@ function getQueueSelectionUnits(queue = fullQueue, state = lastState) {
     unit.audioTrackValues.add(item.audioTrack ?? 0);
     unit.audioTrackLists.push(item.audioTracks || []);
     unit.statuses.add(item.status || 'pending');
+    unit.deleteSourceValues.push({
+      fullPath: item.fullPath,
+      name: item.name,
+      deleteSource: item.deleteSource === true,
+    });
   }
 
   return units.map(unit => {
@@ -522,6 +537,8 @@ function getQueueSelectionUnits(queue = fullQueue, state = lastState) {
       audioTrack,
       audioTracks: sharedFolderAudioTracks(unit.audioTrackLists),
       status,
+      deleteSource: unit.deleteSourceValues.every(item => item.deleteSource),
+      deleteSourceItems: unit.deleteSourceValues,
     };
   });
 }
@@ -664,6 +681,7 @@ function getQueueRenderKey(state) {
     item.tune || '',
     item.saveTo || '',
     item.audioTrack ?? 0,
+    item.deleteSource === true ? '1' : '0',
   ].join('~')).join('||');
   return [
     active ? '1' : '0',
@@ -757,6 +775,12 @@ function renderQueue(queue, info = {}, active = false) {
     audioTrack: item.audioTrack ?? 0,
     audioTracks: item.audioTracks || [],
     status: item.status || 'pending',
+    deleteSource: item.deleteSource === true,
+    deleteSourceItems: [{
+      fullPath: item.fullPath,
+      name: item.name,
+      deleteSource: item.deleteSource === true,
+    }],
   }));
 
   els.queueList.innerHTML = renderItems.map((item, itemIndex) => {
@@ -773,6 +797,16 @@ function renderQueue(queue, info = {}, active = false) {
     const audioAvailable = item.type === 'file' || (Array.isArray(item.audioTracks) && item.audioTracks.length)
       ? `<span class="meta-chip audio-track-chip" title="${audioTitle}">available <strong>${escapeHtml(audioSummary.available)}</strong></span>`
       : '';
+    const deleteItems = Array.isArray(item.deleteSourceItems) && item.deleteSourceItems.length
+      ? item.deleteSourceItems
+      : item.filePaths.map((fullPath, index) => ({
+          fullPath,
+          name: index === 0 ? item.title : fullPath.split('/').pop(),
+          deleteSource: item.deleteSource === true,
+        }));
+    const deleteControl = deleteItems.length === 1
+      ? `<label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-delete-source-path="${escapeHtml(deleteItems[0].fullPath)}" ${deleteItems[0].deleteSource ? 'checked' : ''} ${active && itemIndex === 0 ? 'disabled' : ''}> delete source</label>`
+      : `<details class="delete-source-group"><summary>delete source ${deleteItems.filter(entry => entry.deleteSource).length}/${deleteItems.length}</summary><div class="delete-source-group-list">${deleteItems.map(entry => `<label><input type="checkbox" class="delete-source-check" data-delete-source-path="${escapeHtml(entry.fullPath)}" ${entry.deleteSource ? 'checked' : ''}> <span title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span></label>`).join('')}</div></details>`;
     const isActivePending = active && itemIndex > 0;
     const isReorderable = isEditable || isActivePending;
     const dragHandle = isReorderable
@@ -803,6 +837,7 @@ function renderQueue(queue, info = {}, active = false) {
             <span class="meta-chip" title="${audioTitle}">audio <strong>${escapeHtml(audioSummary.selected)}</strong></span>
             ${audioAvailable}
             <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.subtitle)}</strong></span>
+            ${deleteControl}
           </div>
         </div>
         ${removeControl}
@@ -894,6 +929,8 @@ function render(state, options = {}) {
     logVisibleCount = LIST_PAGE_SIZE;
   }
   setConfigInputs(state.config || {});
+  els.deleteAllSources.checked = state.config?.deleteSource === true;
+  els.deleteAllSources.indeterminate = false;
   updateDocumentTitle(state);
   const machineName = state.app?.machineName || '';
   const cpuCount = Number(state.app?.cpuCount || 0);
@@ -967,6 +1004,7 @@ function render(state, options = {}) {
     els.minVideoKbit,
     els.overheadPct,
     els.encThreads,
+    els.deleteAllSources,
   ].forEach(input => {
     input.disabled = active;
   });
@@ -1313,6 +1351,30 @@ async function applyQueuePatch(patch) {
   }
 }
 
+async function updateDeleteSource(filePaths, deleteSource, all = false) {
+  els.formError.textContent = '';
+  const paths = [...new Set(Array.isArray(filePaths) ? filePaths : [])];
+  try {
+    const data = await apiFetch('/api/queue/delete-source', {
+      method: 'POST',
+      body: JSON.stringify({ filePaths: paths, deleteSource, all }),
+    });
+    if (data.state?.active) {
+      const wanted = new Set(paths);
+      activeQueue = activeQueue.map(item => (
+        all || wanted.has(item.fullPath) ? { ...item, deleteSource } : item
+      ));
+      activeQueue = mergeQueueItems(activeQueue, data.state.queue || []);
+    } else {
+      setFullQueue(data.queue || []);
+    }
+    if (data.state) render(data.state, { forceQueue: true });
+  } catch (error) {
+    els.formError.textContent = error.message;
+    if (lastState) render(lastState, { forceQueue: true });
+  }
+}
+
 async function removeQueueFilePaths(filePaths) {
   els.formError.textContent = '';
   const selectedFilePaths = [...new Set(Array.isArray(filePaths) ? filePaths : [])];
@@ -1361,6 +1423,9 @@ els.stopBtn.addEventListener('click', stopJob);
 els.applyTuneBtn.addEventListener('click', () => applyQueuePatch({ tune: els.bulkTune.value.trim() }));
 els.applySaveBtn.addEventListener('click', () => applyQueuePatch({ saveTo: els.bulkSaveTo.value.trim() }));
 els.applyAudioTrackBtn.addEventListener('click', () => applyQueuePatch({ audioTrack: els.bulkAudioTrack.value.trim() }));
+els.deleteAllSources.addEventListener('change', () => {
+  updateDeleteSource([], els.deleteAllSources.checked, true);
+});
 els.vacuumBtn.addEventListener('click', vacuumDatabase);
 els.queueList.addEventListener('click', event => {
   if (lastState?.active) return;
@@ -1376,7 +1441,13 @@ els.queueList.addEventListener('click', event => {
 });
 els.queueList.addEventListener('change', event => {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement) || !target.classList.contains('queue-check')) return;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.classList.contains('delete-source-check')) {
+    const filePath = target.dataset.deleteSourcePath;
+    if (filePath) updateDeleteSource([filePath], target.checked);
+    return;
+  }
+  if (!target.classList.contains('queue-check')) return;
   const selectionKey = target.dataset.target;
   if (!selectionKey) return;
   if (target.checked) selectedTargets.add(selectionKey);

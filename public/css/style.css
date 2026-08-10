@@ -511,6 +511,9 @@ input[type=number] {
 }
 
 .active-queue-add-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   color: var(--muted);
   cursor: pointer;
   font-size: 0.74rem;
@@ -698,6 +701,74 @@ input[type=number] {
   padding: 0.38rem 0.48rem;
   font-size: 0.84rem;
   border-radius: 10px;
+}
+
+.config-grid .config-checkbox {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.42rem;
+  min-height: 27px;
+  padding: 0.28rem 0.42rem;
+  border: 1px solid rgba(245, 166, 35, 0.2);
+  border-radius: 10px;
+  background: rgba(245, 166, 35, 0.08);
+  cursor: pointer;
+}
+
+.config-grid .config-checkbox span {
+  color: var(--text);
+}
+
+#delete-all-sources,
+.delete-source-check {
+  appearance: none;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-content: center;
+  width: 15px;
+  height: 15px;
+  min-width: 15px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(245, 166, 35, 0.5);
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.9);
+  cursor: pointer;
+}
+
+#delete-all-sources::after,
+.delete-source-check::after {
+  content: '';
+  width: 7px;
+  height: 4px;
+  border: solid #09101a;
+  border-width: 0 0 2px 2px;
+  opacity: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+#delete-all-sources:checked,
+.delete-source-check:checked {
+  border-color: var(--orange);
+  background: var(--orange);
+}
+
+#delete-all-sources:checked::after,
+.delete-source-check:checked::after {
+  opacity: 1;
+}
+
+#delete-all-sources:focus-visible,
+.delete-source-check:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.7);
+  outline-offset: 2px;
+}
+
+#delete-all-sources:disabled,
+.delete-source-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .actions-row {
@@ -1182,6 +1253,75 @@ input[type=number] {
 .meta-chip strong {
   color: var(--text);
   font-weight: 600;
+}
+
+.delete-source-chip {
+  cursor: pointer;
+}
+
+.delete-source-group {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.delete-source-group summary,
+.active-queue-add-summary {
+  list-style: none;
+}
+
+.delete-source-group summary::-webkit-details-marker,
+.active-queue-add-summary::-webkit-details-marker {
+  display: none;
+}
+
+.delete-source-group summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  padding: 0.12rem 0.34rem;
+  border: 1px solid rgba(245, 166, 35, 0.22);
+  border-radius: 999px;
+  background: rgba(245, 166, 35, 0.08);
+  cursor: pointer;
+  user-select: none;
+}
+
+.delete-source-group summary::before,
+.active-queue-add-summary::before {
+  content: '+';
+  color: var(--orange);
+  font-weight: 800;
+}
+
+.delete-source-group[open] summary::before,
+.active-queue-add[open] .active-queue-add-summary::before {
+  content: '-';
+}
+
+.delete-source-group-list {
+  display: grid;
+  gap: 0.2rem;
+  margin-top: 0.24rem;
+  padding: 0.32rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 9px;
+  background: rgba(11, 18, 32, 0.9);
+}
+
+.delete-source-group-list label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.delete-source-group-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .audio-track-chip {

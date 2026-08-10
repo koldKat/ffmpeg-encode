@@ -117,6 +117,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
               <span class="meta-chip">tune <strong>${escapeHtml(item.tune || activeTune)}</strong></span>
               <span class="meta-chip">audio <strong>${escapeHtml(describeAudio(item))}</strong></span>
               <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.path)}</strong></span>
+              <label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(item.fullPath)}" ${item.deleteSource ? 'checked' : ''}> delete source</label>
             </div>
           </div>
           <button type="button" class="queue-remove-btn" data-editor-remove="${index}" aria-label="Remove from additions" title="Remove from additions">X</button>
@@ -153,6 +154,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         tune: item.tune || activeTune,
         audioTrack: String(item.audioTrack ?? 0),
         saveTo: item.saveTo || item.path,
+        deleteSource: item.deleteSource === true,
       }));
       selectedPaths = new Set();
       tuneInput.value = activeTune;
@@ -195,6 +197,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
             tune: item.tune,
             audioTrack: item.audioTrack,
             saveTo: item.saveTo,
+            deleteSource: item.deleteSource === true,
           })),
         }),
       });
@@ -230,7 +233,14 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   applySaveButton.addEventListener('click', () => applyToSelected('saveTo', saveInput.value.trim(), item => item.path));
   list.addEventListener('change', event => {
     const input = event.target;
-    if (!(input instanceof HTMLInputElement) || !input.hasAttribute('data-editor-select')) return;
+    if (!(input instanceof HTMLInputElement)) return;
+    if (input.hasAttribute('data-editor-delete-source')) {
+      const item = items.find(entry => entry.fullPath === input.dataset.editorDeleteSource);
+      if (item) item.deleteSource = input.checked;
+      renderItems();
+      return;
+    }
+    if (!input.hasAttribute('data-editor-select')) return;
     const fullPath = input.dataset.editorSelect;
     if (input.checked) selectedPaths.add(fullPath);
     else selectedPaths.delete(fullPath);

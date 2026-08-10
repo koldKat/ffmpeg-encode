@@ -7,6 +7,7 @@ const { spawn, execFile } = require('child_process');
 const db = require('./server/db');
 const { QueueAppendError, discoverAppendableFiles } = require('./server/queue-append');
 const { QueueInspectionStore } = require('./server/queue-inspections');
+const { allSourcesSelected, finalOutputPath, resolveDeleteSource } = require('./server/delete-source-policy');
 const { ActiveQueueOrderError, reorderActiveQueue } = require('./server/active-queue-order');
 const { writeVersionFileAtomic } = require('./server/app-version');
 
@@ -41,6 +42,7 @@ const DEFAULTS = {
   x264Profile: 'high',
   x264Level: '4.1',
   encThreads: 0,
+  deleteSource: false,
 };
 
 let currentChild = null;
@@ -121,6 +123,7 @@ function normalizeConfig(rawConfig = {}) {
     x264Profile: String(rawConfig.x264Profile || DEFAULTS.x264Profile),
     x264Level: String(rawConfig.x264Level || DEFAULTS.x264Level),
     encThreads: clampNonNegative(rawConfig.encThreads, DEFAULTS.encThreads),
+    deleteSource: rawConfig.deleteSource === true,
   };
 }
 
@@ -190,6 +193,7 @@ function serializeQueuePlanItems(queue = []) {
       saveTo: expandHome(item.saveTo || path.dirname(item.fullPath)),
       audioTrack: normalizeAudioTrack(item.audioTrack, 0),
       audioTracks: normalizeAudioTracks(item.audioTracks),
+      deleteSource: item.deleteSource === true,
       status: item.status === 'failed' ? 'failed' : 'pending',
     }));
 }
@@ -202,6 +206,14 @@ function saveQueuePlan(userId, config, queue = state.queue) {
   }
   db.saveUserQueuePlan(userId, MACHINE_NAME, config?.sourceRoot || '', items);
   return items;
+}
+
+function syncGlobalDeleteSource(userId, fallback = state.config?.deleteSource) {
+  const nextValue = allSourcesSelected(state.queue, fallback);
+  const changed = state.config.deleteSource !== nextValue;
+  state.config.deleteSource = nextValue;
+  if (changed) db.saveUserSettings(userId, MACHINE_NAME, state.config);
+  return state.config.deleteSource;
 }
 
 function getPersistedQueuePlan(userId, config = getPersistedConfig(userId)) {
@@ -218,6 +230,7 @@ function getPersistedQueuePlan(userId, config = getPersistedConfig(userId)) {
         saveTo: expandHome(item.saveTo || path.dirname(fullPath)),
         audioTrack: normalizeAudioTrack(item.audioTrack, 0),
         audioTracks: normalizeAudioTracks(item.audioTracks),
+        deleteSource: item.deleteSource === true,
         status: item.status === 'failed' ? 'failed' : 'pending',
       };
     })
@@ -275,6 +288,7 @@ function hydrateIdleStateForUser(userId, config = getPersistedConfig(userId)) {
     state.counts.total = queueItems.length;
     loadQueueItems(queueItems, config);
   }
+  syncGlobalDeleteSource(userId, config.deleteSource);
   computeDerivedTotals();
 }
 
@@ -828,6 +842,7 @@ function createQueueItem(filePath, index, config, overrides = {}) {
     saveTo: expandHome(overrides.saveTo || path.dirname(fullPath)),
     audioTrack: normalizeAudioTrack(overrides.audioTrack, 0),
     audioTracks: normalizeAudioTracks(overrides.audioTracks),
+    deleteSource: resolveDeleteSource(overrides, config),
   };
 }
 
@@ -1288,7 +1303,13 @@ async function encodeFile(queueItem, index, total, config) {
   const stagePath = path.join(config.outRoot, `${relNoExt}.mp4`);
   const srcDir = path.dirname(filePath);
   const baseNoExt = path.basename(relNoExt);
-  const finalPath = path.join(destinationDir, `${baseNoExt}.mp4`);
+  const deleteSource = queueItem.deleteSource === true;
+  const finalPath = finalOutputPath({
+    sourcePath: filePath,
+    destinationDir,
+    baseName: baseNoExt,
+    deleteSource,
+  });
 
   await ensureDir(outDir);
   await ensureDir(destinationDir);
@@ -1362,7 +1383,7 @@ async function encodeFile(queueItem, index, total, config) {
       state.currentFile.stagePath = filePath;
     } else {
       await promoteStageFile(stagePath, finalPath, moveProgress);
-      if (finalPath !== filePath) {
+      if (deleteSource && finalPath !== filePath) {
         await fs.promises.unlink(filePath);
         await pruneEmptySourceDirs(srcDir, config.sourceRoot);
       }
@@ -1428,7 +1449,8 @@ async function runJob(rawConfig, session, queueItems = null) {
     state.scan.found = queueSeed.length;
     state.counts.total = queueSeed.length;
     loadQueueItems(queueSeed, config);
-    saveQueuePlan(session.user_id, config, state.queue);
+    syncGlobalDeleteSource(session.user_id, config.deleteSource);
+    saveQueuePlan(session.user_id, state.config, state.queue);
     computeDerivedTotals();
     persistRun();
     publish();
@@ -1620,11 +1642,12 @@ async function handleScan(req, res) {
   state.scan.found = mergedQueue.length;
   state.counts.total = mergedQueue.length;
   loadQueueItems(mergedQueue, config);
+  syncGlobalDeleteSource(session.user_id, config.deleteSource);
   computeDerivedTotals();
-  db.saveUserSettings(session.user_id, MACHINE_NAME, config);
-  saveQueuePlan(session.user_id, config, state.queue);
+  db.saveUserSettings(session.user_id, MACHINE_NAME, state.config);
+  saveQueuePlan(session.user_id, state.config, state.queue);
   pushEvent(mergedQueue.length ? `Loaded ${mergedQueue.length} file(s) for editing.` : 'No matching video files found.');
-  send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(config) });
+  send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(state.config) });
 }
 
 async function handleQueue(req, res, url = null) {
@@ -1699,6 +1722,7 @@ async function handleQueue(req, res, url = null) {
     state.scan.found = state.queue.length;
     state.counts.total = state.queue.length;
     computeDerivedTotals();
+    syncGlobalDeleteSource(session.user_id, state.config.deleteSource);
     saveQueuePlan(session.user_id, state.config, state.queue);
     publish();
     send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(getPersistedConfig(session.user_id)) });
@@ -1747,6 +1771,53 @@ async function discoverActiveQueuePaths(rawPath) {
     stagingRoot: state.config.outRoot,
     existingPaths: state.queue.map(item => item.fullPath),
     videoExtensions: VIDEO_EXTS,
+  });
+}
+
+async function handleQueueDeleteSource(req, res) {
+  const session = await authenticate(req, res);
+  if (!session) return;
+  if (!authorizeApp(session, res)) return;
+  if (state.active && activeUserId !== session.user_id) {
+    send(res, 409, { error: 'Only the active batch owner can change source deletion.' });
+    return;
+  }
+
+  const body = await readBody(req);
+  const deleteSource = body.deleteSource === true;
+  const applyAll = body.all === true;
+  const filePaths = Array.isArray(body.filePaths) ? [...new Set(body.filePaths.map(String))] : [];
+  if (!applyAll && !filePaths.length) {
+    send(res, 400, { error: 'No files were selected.' });
+    return;
+  }
+  if (state.active && (applyAll || filePaths.includes(activeQueuePath))) {
+    send(res, 409, { error: 'Source deletion cannot be changed for the file currently encoding.' });
+    return;
+  }
+
+  const wanted = new Set(filePaths);
+  const editableQueue = state.active
+    ? getPublicQueue().filter(item => item.fullPath !== activeQueuePath)
+    : state.queue;
+  if (!applyAll) {
+    const matched = editableQueue.filter(item => wanted.has(item.fullPath));
+    if (matched.length !== wanted.size) {
+      send(res, 404, { error: 'One or more files were not found in the current queue.' });
+      return;
+    }
+  }
+  for (const item of editableQueue) {
+    if (!applyAll && !wanted.has(item.fullPath)) continue;
+    item.deleteSource = deleteSource;
+  }
+  syncGlobalDeleteSource(session.user_id, deleteSource);
+  saveQueuePlan(session.user_id, state.config, state.queue);
+  publish();
+  send(res, 200, {
+    ok: true,
+    queue: state.active ? null : state.queue,
+    state: clonePublicState(state.config),
   });
 }
 
@@ -1858,11 +1929,13 @@ async function handleQueueAppend(req, res) {
           ? resolveAudioTrackByLanguage(inspectedItem, rawAudioTrack)
           : (inspectedItem.audioTracks.some(track => track.index === requestedAudioTrack) ? requestedAudioTrack : 0),
         audioTracks: inspectedItem.audioTracks,
+        deleteSource: requestedItem.deleteSource === true,
       },
     );
   });
 
   state.queue.push(...newItems);
+  syncGlobalDeleteSource(session.user_id, state.config.deleteSource);
   state.counts.total = state.queue.length;
   state.scan.found = state.queue.length;
   state.queueInfo = {
@@ -2252,6 +2325,10 @@ const server = http.createServer(async (req, res) => {
     }
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/queue') {
       await handleQueue(req, res, url);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/queue/delete-source') {
+      await handleQueueDeleteSource(req, res);
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/queue/append') {

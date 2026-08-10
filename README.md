@@ -4,7 +4,7 @@ A self-hosted browser dashboard for building and monitoring FFmpeg two-pass H.26
 
 ## Important Warning
 
-This app can delete original source files. After an encoded file is successfully staged and promoted to a different final path, the original source file is removed. Empty source subfolders are then pruned up to, but never including, the selected source root.
+This app can delete original source files when deletion is explicitly selected globally or per file. Deletion happens only after an encoded file is successfully staged and promoted. Empty source subfolders are then pruned up to, but never including, the selected source root.
 
 Test with disposable media and verify all source, staging, and destination paths before using it on valuable files.
 
@@ -13,6 +13,7 @@ Test with disposable media and verify all source, staging, and destination paths
 - Recursive video discovery for MP4, MKV, AVI, MOV, WMV, FLV, MPEG, MPG, and M4V files
 - Editable queue with folder grouping, selection, removal, drag reordering, and persisted queue plans
 - Per-file or per-folder x264 tune, destination folder, and audio language/track selection
+- Opt-in source deletion globally or per file, persisted with the queue plan
 - Audio stream metadata discovered with `ffprobe`
 - Configurable x264 preset, target MB per minute, size rounding, audio bitrate, bitrate floor, overhead, and thread count
 - Two-pass H.264 encoding with AAC audio
