@@ -129,7 +129,7 @@ If `Delete source` is selected for a file and the final save succeeds:
 - a same-path MP4 is replaced by its completed encode
 - now-empty source subfolders are removed upward until the selected source root is reached
 
-If `Delete source` is not selected, the original remains untouched. When an MP4 would otherwise overwrite itself in its source folder, the output is named `<name>.encoded.mp4` instead.
+If `Delete source` is not selected, the original remains untouched. When an MP4 would otherwise overwrite itself in its source folder, the output is named `<name>.encoded.mp4` instead. The same safe name is used if the normal output would overwrite a different queued source with the same basename, even when deletion is selected. If that fallback is also a queued source, numbered names such as `<name>.encoded-2.mp4` are used. These generated suffixes are excluded from later scans and active-run inspection so they are not encoded repeatedly.
 
 The selected source root itself is not removed.
 

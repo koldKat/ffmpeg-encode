@@ -109,6 +109,7 @@ let queueFetchInFlight = false;
 let lastQueueRenderKey = '';
 let dragState = null;
 let activeQueueAdder = null;
+let deleteSourceUpdateQueue = Promise.resolve();
 const pathSuggestTimers = new Map();
 const QUEUE_DRAG_SCROLL_EDGE = 72;
 const QUEUE_DRAG_SCROLL_STEP = 28;
@@ -1270,6 +1271,7 @@ async function scanQueue() {
 async function startJob() {
   els.formError.textContent = '';
   try {
+    await deleteSourceUpdateQueue;
     const data = await apiFetch('/api/start', {
       method: 'POST',
       body: JSON.stringify(configFromForm()),
@@ -1372,7 +1374,16 @@ async function updateDeleteSource(filePaths, deleteSource, all = false) {
   } catch (error) {
     els.formError.textContent = error.message;
     if (lastState) render(lastState, { forceQueue: true });
+    return false;
   }
+  return true;
+}
+
+function enqueueDeleteSourceUpdate(filePaths, deleteSource, all = false) {
+  deleteSourceUpdateQueue = deleteSourceUpdateQueue
+    .catch(() => false)
+    .then(() => updateDeleteSource(filePaths, deleteSource, all));
+  return deleteSourceUpdateQueue;
 }
 
 async function removeQueueFilePaths(filePaths) {
@@ -1424,7 +1435,7 @@ els.applyTuneBtn.addEventListener('click', () => applyQueuePatch({ tune: els.bul
 els.applySaveBtn.addEventListener('click', () => applyQueuePatch({ saveTo: els.bulkSaveTo.value.trim() }));
 els.applyAudioTrackBtn.addEventListener('click', () => applyQueuePatch({ audioTrack: els.bulkAudioTrack.value.trim() }));
 els.deleteAllSources.addEventListener('change', () => {
-  updateDeleteSource([], els.deleteAllSources.checked, true);
+  enqueueDeleteSourceUpdate([], els.deleteAllSources.checked, true);
 });
 els.vacuumBtn.addEventListener('click', vacuumDatabase);
 els.queueList.addEventListener('click', event => {
@@ -1444,7 +1455,7 @@ els.queueList.addEventListener('change', event => {
   if (!(target instanceof HTMLInputElement)) return;
   if (target.classList.contains('delete-source-check')) {
     const filePath = target.dataset.deleteSourcePath;
-    if (filePath) updateDeleteSource([filePath], target.checked);
+    if (filePath) enqueueDeleteSourceUpdate([filePath], target.checked);
     return;
   }
   if (!target.classList.contains('queue-check')) return;

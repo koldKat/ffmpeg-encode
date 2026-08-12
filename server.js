@@ -7,7 +7,12 @@ const { spawn, execFile } = require('child_process');
 const db = require('./server/db');
 const { QueueAppendError, discoverAppendableFiles } = require('./server/queue-append');
 const { QueueInspectionStore } = require('./server/queue-inspections');
-const { allSourcesSelected, finalOutputPath, resolveDeleteSource } = require('./server/delete-source-policy');
+const {
+  allSourcesSelected,
+  finalOutputPath,
+  isPreservedSourceOutput,
+  resolveDeleteSource,
+} = require('./server/delete-source-policy');
 const { ActiveQueueOrderError, reorderActiveQueue } = require('./server/active-queue-order');
 const { writeVersionFileAtomic } = require('./server/app-version');
 
@@ -863,7 +868,9 @@ async function walkFiles(dir) {
     const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       results.push(...await walkFiles(entryPath));
-    } else if (entry.isFile() && VIDEO_EXTS.has(path.extname(entry.name).toLowerCase())) {
+    } else if (entry.isFile()
+      && VIDEO_EXTS.has(path.extname(entry.name).toLowerCase())
+      && !isPreservedSourceOutput(entry.name)) {
       results.push(entryPath);
     }
   }
@@ -1309,6 +1316,7 @@ async function encodeFile(queueItem, index, total, config) {
     destinationDir,
     baseName: baseNoExt,
     deleteSource,
+    sourcePaths: state.queue.map(item => item.fullPath),
   });
 
   await ensureDir(outDir);
@@ -1765,13 +1773,14 @@ async function handleQueue(req, res, url = null) {
 }
 
 async function discoverActiveQueuePaths(rawPath) {
-  return discoverAppendableFiles({
+  const files = await discoverAppendableFiles({
     requestedPath: expandHome(rawPath),
     sourceRoot: state.config.sourceRoot,
     stagingRoot: state.config.outRoot,
     existingPaths: state.queue.map(item => item.fullPath),
     videoExtensions: VIDEO_EXTS,
   });
+  return files.filter(filePath => !isPreservedSourceOutput(filePath));
 }
 
 async function handleQueueDeleteSource(req, res) {

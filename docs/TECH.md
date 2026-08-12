@@ -72,6 +72,8 @@ Only one batch can run across the whole server. Media probing during an editable
 
 Settings are keyed by `(user_id, machine_name)`, where `machine_name` is `os.hostname()`. One database can therefore retain different setup values for different hosts.
 
+The browser serializes source-deletion mutations and waits for the mutation queue before sending `POST /api/start`. This prevents a rapid checkbox-change/start sequence from racing the active-run lock.
+
 ## Public State Contract
 
 `createState()` defines canonical in-memory state. `clonePublicState()` derives JSON returned by state, queue, and control endpoints and sent over SSE.
@@ -298,7 +300,7 @@ Speed is media duration divided by encode wall time. Average bitrate is output b
 
 After successful promotion, the original is deleted only when that queue item's persisted `deleteSource` value is true. Empty source directories are removed only while descendants of `sourceRoot`; the source root is never removed.
 
-An MP4 whose final path exactly equals its source is replaced through staging only when deletion is selected. Otherwise `finalOutputPath()` chooses `<basename>.encoded.mp4` so promotion cannot overwrite the original.
+An MP4 whose final path exactly equals its source is replaced through staging only when deletion is selected. Otherwise `finalOutputPath()` chooses `<basename>.encoded.mp4` so promotion cannot overwrite the original. It uses the same fallback whenever the requested final path matches a different queued source, regardless of deletion selection, and increments to `.encoded-2.mp4` when needed to avoid another queued source. Recursive scans and active-run inspection exclude these case-insensitive generated suffixes to prevent repeat-processing loops.
 
 ## Pause, Stop, Shutdown, And Restart
 

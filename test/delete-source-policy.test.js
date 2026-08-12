@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   allSourcesSelected,
   finalOutputPath,
+  isPreservedSourceOutput,
   resolveDeleteSource,
 } = require('../server/delete-source-policy');
 
@@ -32,4 +33,38 @@ test('an unchecked same-path MP4 gets a non-destructive output name', () => {
     baseName: 'episode',
     deleteSource: true,
   }), sourcePath);
+});
+
+test('recognizes app-generated preserved-source outputs case-insensitively', () => {
+  assert.equal(isPreservedSourceOutput('/source/episode.encoded.mp4'), true);
+  assert.equal(isPreservedSourceOutput('/source/episode.encoded-2.mp4'), true);
+  assert.equal(isPreservedSourceOutput('/source/EPISODE.ENCODED.MP4'), true);
+  assert.equal(isPreservedSourceOutput('/source/episode.mp4'), false);
+});
+
+test('never targets a different queued source with the same basename', () => {
+  const mkvSource = path.join('/source', 'episode.mkv');
+  const mp4Source = path.join('/source', 'episode.mp4');
+  assert.equal(finalOutputPath({
+    sourcePath: mkvSource,
+    destinationDir: path.dirname(mkvSource),
+    baseName: 'episode',
+    deleteSource: true,
+    sourcePaths: [mkvSource, mp4Source],
+  }), path.join('/source', 'episode.encoded.mp4'));
+});
+
+test('increments the protected output name when its first fallback is another source', () => {
+  const mkvSource = path.join('/source', 'episode.mkv');
+  assert.equal(finalOutputPath({
+    sourcePath: mkvSource,
+    destinationDir: path.dirname(mkvSource),
+    baseName: 'episode',
+    deleteSource: true,
+    sourcePaths: [
+      mkvSource,
+      path.join('/source', 'episode.mp4'),
+      path.join('/source', 'episode.encoded.mp4'),
+    ],
+  }), path.join('/source', 'episode.encoded-2.mp4'));
 });
