@@ -211,11 +211,12 @@ A reverse proxy connecting from localhost can unintentionally make remote reques
 
 `POST /api/start` validates source access, saves settings, and chooses work in this order:
 
-1. Non-empty persisted queue plan.
-2. Current idle queue when its source root matches.
-3. Fresh recursive discovery inside `runJob()`.
+1. A non-empty persisted queue plan whose source root exactly matches the submitted source root.
+2. A non-empty current idle queue whose source root exactly matches.
 
-`runJob()` clears the last-summary overlay, resets runtime state, creates a `job_runs` row, marks the run `scanning`, and publishes. It loads and saves the queue, changes to `running`, and processes files sequentially. Its loop uses the current queue length so append requests accepted before the loop drains become part of the active run.
+If neither queue is available, the endpoint returns `400` and does not scan the source directory or create a run. `runJob()` never discovers initial work itself.
+
+`runJob()` clears the last-summary overlay, resets runtime state, creates a `job_runs` row, marks the run `scanning`, and publishes. It loads and saves the supplied queue, changes to `running`, and processes files sequentially. Its loop uses the current queue length so append requests accepted before the loop drains become part of the active run.
 
 ### Per-file encoding
 
@@ -364,7 +365,7 @@ All require authentication and the protected username.
 | `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, tune, audioTrack, saveTo, deleteSource }] }` | Consumes an inspection and appends the ordered, individually configured subset |
 | `POST /api/queue/delete-source` | `{ filePaths, deleteSource, all }` | Persists global or per-file source deletion; the active file is immutable |
 | `POST /api/queue/reorder-active` | `{ order: [visibleFullPath...] }` | Reorders the loaded pending prefix while requiring the current encode to remain first |
-| `POST /api/start` | config object | Starts asynchronous batch; returns immediate state |
+| `POST /api/start` | config object | Starts only an exact-root loaded/persisted non-empty queue; otherwise returns `400` |
 | `POST /api/pause-toggle` | optional `{ enabled }` | Pauses or resumes active FFmpeg |
 | `POST /api/stop-after-current` | optional `{ enabled }` | Toggles graceful stop |
 | `POST /api/stop` | none | Requests immediate stop |

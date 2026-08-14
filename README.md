@@ -74,6 +74,8 @@ The SQLite database is created automatically as `database.sqlite`. Runtime datab
 5. Edit queue order, tune, audio selection, or final save folders.
 6. Select **Start Encode Job**.
 
+Start operates only on the non-empty queue shown by the app. It never performs an implicit folder scan; use **Load File Queue** whenever you want to discover files.
+
 The current build authorizes only the username `koldKat` for encoding routes. This is controlled by `REMOTE_USERNAME` near the top of `server.js`; change it before deployment if a different account should operate the encoder. Other registered accounts can log in but cannot use the encoding interface.
 
 ## Encoding Model

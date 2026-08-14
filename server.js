@@ -14,6 +14,7 @@ const {
   resolveDeleteSource,
 } = require('./server/delete-source-policy');
 const { ActiveQueueOrderError, reorderActiveQueue } = require('./server/active-queue-order');
+const { chooseStartQueue } = require('./server/start-queue');
 const { writeVersionFileAtomic } = require('./server/app-version');
 
 const PORT = Number(process.env.PORT || 3017);
@@ -1428,7 +1429,7 @@ async function encodeFile(queueItem, index, total, config) {
   }
 }
 
-async function runJob(rawConfig, session, queueItems = null) {
+async function runJob(rawConfig, session, queueItems) {
   const config = normalizeConfig(rawConfig);
   lastBatchSummary = null;
 
@@ -1451,9 +1452,7 @@ async function runJob(rawConfig, session, queueItems = null) {
   pushEvent(`Scanning ${config.sourceRoot}...`);
 
   try {
-    const queueSeed = Array.isArray(queueItems) && queueItems.length
-      ? queueItems.map(item => ({ ...item }))
-      : (await walkFiles(config.sourceRoot)).sort((a, b) => a.localeCompare(b)).map((filePath, index) => createQueueItem(filePath, index + 1, config));
+    const queueSeed = Array.isArray(queueItems) ? queueItems.map(item => ({ ...item })) : [];
     state.scan.found = queueSeed.length;
     state.counts.total = queueSeed.length;
     loadQueueItems(queueSeed, config);
@@ -2007,13 +2006,19 @@ async function handleStart(req, res) {
     return;
   }
   db.saveUserSettings(session.user_id, MACHINE_NAME, config);
-  if (!state.active) hydrateIdleStateForUser(session.user_id, config);
-  const persistedQueue = getPersistedQueuePlan(session.user_id, config);
-  const queuedItems = persistedQueue.length
-    ? persistedQueue.map(item => ({ ...item }))
-    : (!state.active && state.queue.length && state.scan.sourceRoot === config.sourceRoot
-      ? state.queue.map(item => ({ ...item }))
-      : null);
+  const persistedPlan = db.getUserQueuePlan(session.user_id, MACHINE_NAME);
+  const persistedQueue = persistedPlan ? getPersistedQueuePlan(session.user_id, config) : [];
+  const queuedItems = chooseStartQueue({
+    requestedSourceRoot: config.sourceRoot,
+    persistedSourceRoot: persistedPlan?.sourceRoot,
+    persistedQueue,
+    currentSourceRoot: state.scan.sourceRoot,
+    currentQueue: state.queue,
+  });
+  if (!queuedItems.length) {
+    send(res, 400, { error: 'The queue is empty. Load files before starting an encode job.' });
+    return;
+  }
   runnerPromise = runJob(config, session, queuedItems).finally(() => {
     runnerPromise = null;
   });

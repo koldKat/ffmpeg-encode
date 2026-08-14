@@ -1010,7 +1010,7 @@ function render(state, options = {}) {
     input.disabled = active;
   });
   els.scanBtn.disabled = active;
-  els.startBtn.disabled = active;
+  els.startBtn.disabled = active || Number(state.queueInfo?.total || 0) === 0;
   const gracefulStopRequested = Boolean(state.stopAfterCurrent);
   const paused = Boolean(state.paused);
   const movingFile = Boolean(state.currentFile && state.currentFile.phase === 'moving');

@@ -58,6 +58,8 @@ These settings are stored in the database per machine for the logged-in user. Th
 
 Press `Load File Queue` after setting the source root.
 
+`Start Encode Job` is disabled while the queue is empty. The server also rejects an empty queue, so Start never scans the last configured folder implicitly. Loading files is the only way to create the initial batch queue.
+
 Selection behavior:
 - Files directly inside the selected source root are selectable one by one.
 - Files inside subfolders are grouped by subfolder for bulk selection.
