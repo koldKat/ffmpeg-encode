@@ -32,6 +32,11 @@ const els = {
   encThreads: document.getElementById('enc-threads'),
   deleteAllSources: document.getElementById('delete-all-sources'),
   scanBtn: document.getElementById('scan-btn'),
+  queueLoadProgress: document.getElementById('queue-load-progress'),
+  queueLoadLabel: document.getElementById('queue-load-label'),
+  queueLoadCount: document.getElementById('queue-load-count'),
+  queueLoadTrack: document.getElementById('queue-load-track'),
+  queueLoadBar: document.getElementById('queue-load-bar'),
   startBtn: document.getElementById('start-btn'),
   pauseLabel: document.getElementById('pause-label'),
   pauseBtn: document.getElementById('pause-btn'),
@@ -96,6 +101,7 @@ let viewer = null;
 let fullQueue = [];
 let activeQueue = [];
 let activeQueueFetchInFlight = false;
+let queueScanInFlight = false;
 let editableQueueVisibleCount = 50;
 let queuePagingGestureConsumed = false;
 let queuePagingIntent = false;
@@ -949,6 +955,7 @@ function render(state, options = {}) {
   els.heroMeta.setAttribute('data-full-text', heroMessage);
   els.heroMeta.className = `hero-meta hero-meta-hint${state.message === 'Will stop after current file completes.' ? ' hero-meta-warning' : ''}`;
   els.foundLabel.textContent = state.scan?.found ? `${state.scan.found} file(s) found` : 'No scan yet';
+  renderQueueLoadProgress(state.scan);
 
   const total = state.counts?.total || 0;
   const done = state.counts?.completed || 0;
@@ -994,6 +1001,7 @@ function render(state, options = {}) {
   } else if (active && els.formError.textContent === state.message) {
     els.formError.textContent = '';
   }
+  const queueLoading = queueScanInFlight || state.scan?.inProgress === true;
   [
     els.sourceRoot,
     els.outRoot,
@@ -1007,10 +1015,11 @@ function render(state, options = {}) {
     els.encThreads,
     els.deleteAllSources,
   ].forEach(input => {
-    input.disabled = active;
+    input.disabled = active || queueLoading;
   });
-  els.scanBtn.disabled = active;
-  els.startBtn.disabled = active || Number(state.queueInfo?.total || 0) === 0;
+  renderQueueLoadingButton(queueLoading);
+  els.scanBtn.disabled = active || queueLoading;
+  els.startBtn.disabled = active || queueLoading || Number(state.queueInfo?.total || 0) === 0;
   const gracefulStopRequested = Boolean(state.stopAfterCurrent);
   const paused = Boolean(state.paused);
   const movingFile = Boolean(state.currentFile && state.currentFile.phase === 'moving');
@@ -1026,6 +1035,44 @@ function render(state, options = {}) {
   els.applySaveBtn.disabled = active || selectedTargets.size === 0;
   els.applyAudioTrackBtn.disabled = active || selectedTargets.size === 0;
   els.vacuumBtn.disabled = active;
+}
+
+function renderQueueLoadingButton(loading) {
+  els.scanBtn.classList.toggle('is-loading', loading);
+  els.scanBtn.textContent = loading ? 'Loading queue...' : 'Load File Queue';
+  if (loading) {
+    els.scanBtn.setAttribute('aria-busy', 'true');
+  } else {
+    els.scanBtn.removeAttribute('aria-busy');
+  }
+}
+
+function renderQueueLoadProgress(scan = null) {
+  const serverLoading = scan?.inProgress === true;
+  const visible = queueScanInFlight || serverLoading;
+  els.queueLoadProgress.hidden = !visible;
+  if (!visible) return;
+
+  const total = Math.max(0, Number(scan?.total) || 0);
+  const processed = Math.max(0, Math.min(total, Number(scan?.processed) || 0));
+  const inspecting = scan?.phase === 'inspecting' && total > 0;
+  els.queueLoadLabel.textContent = inspecting ? 'Inspecting media tracks...' : 'Discovering files...';
+  els.queueLoadCount.textContent = inspecting
+    ? `${processed} / ${total}`
+    : (Number(scan?.discovered) > 0 ? `${scan.discovered} found` : '');
+  els.queueLoadBar.classList.toggle('is-indeterminate', !inspecting);
+  els.queueLoadBar.style.width = inspecting ? `${(processed / total) * 100}%` : '38%';
+  els.queueLoadTrack.toggleAttribute('aria-valuemin', inspecting);
+  els.queueLoadTrack.toggleAttribute('aria-valuemax', inspecting);
+  if (inspecting) {
+    els.queueLoadTrack.setAttribute('aria-valuemin', '0');
+    els.queueLoadTrack.setAttribute('aria-valuemax', String(total));
+    els.queueLoadTrack.setAttribute('aria-valuenow', String(processed));
+    els.queueLoadTrack.removeAttribute('aria-valuetext');
+  } else {
+    els.queueLoadTrack.removeAttribute('aria-valuenow');
+    els.queueLoadTrack.setAttribute('aria-valuetext', 'Discovering files');
+  }
 }
 
 async function apiFetch(url, options = {}) {
@@ -1162,10 +1209,10 @@ function openEvents() {
       resetActiveQueue([]);
     }
     render(nextState);
-    if (!nextState.active && (nextState.queueInfo?.total || 0) > 0 && fullQueue.length !== nextState.queueInfo.total) {
+    if (!nextState.active && !nextState.scan?.inProgress && (nextState.queueInfo?.total || 0) > 0 && fullQueue.length !== nextState.queueInfo.total) {
       fetchFullQueue().catch(() => {});
     }
-    if (!nextState.active && (nextState.queueInfo?.total || 0) === 0 && fullQueue.length) {
+    if (!nextState.active && !nextState.scan?.inProgress && (nextState.queueInfo?.total || 0) === 0 && fullQueue.length) {
       setFullQueue([]);
       clearQueueSelection();
       render(nextState);
@@ -1254,7 +1301,13 @@ async function boot() {
 }
 
 async function scanQueue() {
+  if (queueScanInFlight) return;
   els.formError.textContent = '';
+  queueScanInFlight = true;
+  els.scanBtn.disabled = true;
+  renderQueueLoadingButton(true);
+  els.startBtn.disabled = true;
+  renderQueueLoadProgress({ inProgress: true, phase: 'discovering' });
   try {
     const data = await apiFetch('/api/scan', {
       method: 'POST',
@@ -1265,6 +1318,14 @@ async function scanQueue() {
     render(data.state);
   } catch (error) {
     els.formError.textContent = error.message;
+  } finally {
+    queueScanInFlight = false;
+    if (lastState) {
+      render(lastState);
+    } else {
+      renderQueueLoadingButton(false);
+      renderQueueLoadProgress();
+    }
   }
 }
 

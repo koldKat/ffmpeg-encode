@@ -58,6 +58,8 @@ These settings are stored in the database per machine for the logged-in user. Th
 
 Press `Load File Queue` after setting the source root.
 
+While folders are being searched, the button displays a spinner and an indeterminate progress bar. Once the files are known, the bar reports how many files have had their media tracks inspected. Another scan or job start is prevented until the queue is ready.
+
 `Start Encode Job` is disabled while the queue is empty. The server also rejects an empty queue, so Start never scans the last configured folder implicitly. Loading files is the only way to create the initial batch queue.
 
 Selection behavior:

@@ -120,6 +120,15 @@
             <button id="start-btn" class="primary-btn" disabled>Start Encode Job</button>
             <button id="stop-btn" class="ghost-btn stop-btn">Stop</button>
           </div>
+          <div id="queue-load-progress" class="queue-load-progress" role="status" aria-live="polite" hidden>
+            <div class="queue-load-meta">
+              <span id="queue-load-label">Discovering files...</span>
+              <span id="queue-load-count"></span>
+            </div>
+            <div id="queue-load-track" class="progress-track" role="progressbar" aria-label="Queue loading progress">
+              <div id="queue-load-bar" class="progress-fill progress-orange queue-load-bar"></div>
+            </div>
+          </div>
           <div id="form-error" class="inline-error"></div>
         </section>
 

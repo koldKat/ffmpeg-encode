@@ -354,7 +354,7 @@ All require authentication and the protected username.
 | --- | --- | --- |
 | `GET /api/state` | none | Hydrates idle state and returns public snapshot |
 | `GET /api/events?token=...` | query token | Opens SSE with immediate snapshot |
-| `POST /api/scan` | config object | Discovers, merges, probes, persists, and returns queue/state |
+| `POST /api/scan` | config object | Discovers, merges, probes, persists, and returns queue/state; progress is published through SSE |
 | `GET /api/queue` | optional `offset`, `limit` | Returns full or paged public queue and state |
 | `POST /api/queue` | `{ order: [fullPath...] }` | Reorders after exact membership validation |
 | `POST /api/queue` | `{ filePaths, remove: true }` | Removes queue entries, not disk files |

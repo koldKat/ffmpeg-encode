@@ -56,6 +56,7 @@ let stopRequested = false;
 let stopAfterCurrentRequested = false;
 let pauseRequested = false;
 let runnerPromise = null;
+let scanInProgress = false;
 let activeRunId = null;
 let activeUserId = null;
 let activeQueuePath = null;
@@ -378,6 +379,11 @@ function createState() {
       sourceRoot: '',
       outRoot: '',
       found: 0,
+      inProgress: false,
+      phase: null,
+      discovered: 0,
+      processed: 0,
+      total: 0,
     },
     currentFile: null,
     queue: [],
@@ -862,17 +868,18 @@ function loadQueueItems(items, config = state.config) {
   state.queueInfo = { total: state.queue.length, visible: Math.min(state.queue.length, QUEUE_PREVIEW_LIMIT), hidden: Math.max(0, state.queue.length - QUEUE_PREVIEW_LIMIT) };
 }
 
-async function walkFiles(dir) {
+async function walkFiles(dir, onFile = null) {
   const entries = await fs.promises.readdir(dir, { withFileTypes: true });
   const results = [];
   for (const entry of entries) {
     const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(...await walkFiles(entryPath));
+      results.push(...await walkFiles(entryPath, onFile));
     } else if (entry.isFile()
       && VIDEO_EXTS.has(path.extname(entry.name).toLowerCase())
       && !isPreservedSourceOutput(entry.name)) {
       results.push(entryPath);
+      onFile?.(entryPath);
     }
   }
   return results;
@@ -936,18 +943,21 @@ async function probeMedia(filePath) {
   return { durationSeconds, totalFrames, audioTracks };
 }
 
-async function enrichQueueAudioTracks(items, concurrency = 4) {
+async function enrichQueueAudioTracks(items, concurrency = 4, onProgress = null) {
   const queue = [...(items || [])];
   async function worker() {
     while (queue.length) {
       const item = queue.shift();
-      if (!item || normalizeAudioTracks(item.audioTracks).length) continue;
-      try {
-        const probe = await probeMedia(item.fullPath);
-        item.audioTracks = normalizeAudioTracks(probe.audioTracks);
-      } catch {
-        item.audioTracks = [];
+      if (!item) continue;
+      if (!normalizeAudioTracks(item.audioTracks).length) {
+        try {
+          const probe = await probeMedia(item.fullPath);
+          item.audioTracks = normalizeAudioTracks(probe.audioTracks);
+        } catch {
+          item.audioTracks = [];
+        }
       }
+      onProgress?.(item);
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, () => worker()));
@@ -1611,8 +1621,10 @@ async function handleState(req, res) {
   const session = await authenticate(req, res);
   if (!session) return;
   if (!authorizeApp(session, res)) return;
-  const config = state.active && activeUserId === session.user_id ? state.config : getPersistedConfig(session.user_id);
-  if (!state.active) hydrateIdleStateForUser(session.user_id, config);
+  const config = (state.active && activeUserId === session.user_id) || scanInProgress
+    ? state.config
+    : getPersistedConfig(session.user_id);
+  if (!state.active && !scanInProgress) hydrateIdleStateForUser(session.user_id, config);
   send(res, 200, {
     ...clonePublicState(config),
     viewer: {
@@ -1626,8 +1638,8 @@ async function handleScan(req, res) {
   const session = await authenticate(req, res);
   if (!session) return;
   if (!authorizeApp(session, res)) return;
-  if (state.active || runnerPromise) {
-    send(res, 409, { error: 'Cannot rescan while a job is running.' });
+  if (state.active || runnerPromise || scanInProgress) {
+    send(res, 409, { error: scanInProgress ? 'The queue is already loading.' : 'Cannot rescan while a job is running.' });
     return;
   }
   const body = await readBody(req);
@@ -1638,30 +1650,73 @@ async function handleScan(req, res) {
     send(res, 400, { error: 'Source root does not exist.' });
     return;
   }
+  if (state.active || runnerPromise || scanInProgress) {
+    send(res, 409, { error: scanInProgress ? 'The queue is already loading.' : 'Cannot rescan while a job is running.' });
+    return;
+  }
 
-  const files = (await walkFiles(config.sourceRoot)).sort((a, b) => a.localeCompare(b));
-  const persistedQueue = getPersistedQueuePlan(session.user_id, config).filter(item => item.fullPath.startsWith(`${config.sourceRoot}${path.sep}`) || item.fullPath === config.sourceRoot);
-  const mergedQueue = mergePersistedQueuePlan(files, persistedQueue, config);
-  await enrichQueueAudioTracks(mergedQueue);
-  resetState(config);
-  state.scan.sourceRoot = config.sourceRoot;
-  state.scan.outRoot = config.outRoot;
-  state.scan.found = mergedQueue.length;
-  state.counts.total = mergedQueue.length;
-  loadQueueItems(mergedQueue, config);
-  syncGlobalDeleteSource(session.user_id, config.deleteSource);
-  computeDerivedTotals();
-  db.saveUserSettings(session.user_id, MACHINE_NAME, state.config);
-  saveQueuePlan(session.user_id, state.config, state.queue);
-  pushEvent(mergedQueue.length ? `Loaded ${mergedQueue.length} file(s) for editing.` : 'No matching video files found.');
-  send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(state.config) });
+  scanInProgress = true;
+  state.scan = {
+    ...state.scan,
+    sourceRoot: config.sourceRoot,
+    outRoot: config.outRoot,
+    inProgress: true,
+    phase: 'discovering',
+    discovered: 0,
+    processed: 0,
+    total: 0,
+  };
+  state.config = { ...config };
+  state.message = `Discovering files in ${config.sourceRoot}...`;
+  publish();
+
+  try {
+    let discovered = 0;
+    const files = (await walkFiles(config.sourceRoot, () => {
+      discovered += 1;
+      state.scan.discovered = discovered;
+      if (discovered === 1 || discovered % 25 === 0) publish();
+    })).sort((a, b) => a.localeCompare(b));
+    const persistedQueue = getPersistedQueuePlan(session.user_id, config).filter(item => item.fullPath.startsWith(`${config.sourceRoot}${path.sep}`) || item.fullPath === config.sourceRoot);
+    const mergedQueue = mergePersistedQueuePlan(files, persistedQueue, config);
+    state.scan.phase = 'inspecting';
+    state.scan.total = mergedQueue.length;
+    state.scan.processed = 0;
+    publish();
+
+    const publishEvery = Math.max(1, Math.ceil(mergedQueue.length / 100));
+    await enrichQueueAudioTracks(mergedQueue, 4, () => {
+      state.scan.processed += 1;
+      if (state.scan.processed === mergedQueue.length || state.scan.processed % publishEvery === 0) publish();
+    });
+    resetState(config);
+    state.scan.sourceRoot = config.sourceRoot;
+    state.scan.outRoot = config.outRoot;
+    state.scan.found = mergedQueue.length;
+    state.counts.total = mergedQueue.length;
+    loadQueueItems(mergedQueue, config);
+    syncGlobalDeleteSource(session.user_id, config.deleteSource);
+    computeDerivedTotals();
+    db.saveUserSettings(session.user_id, MACHINE_NAME, state.config);
+    saveQueuePlan(session.user_id, state.config, state.queue);
+    pushEvent(mergedQueue.length ? `Loaded ${mergedQueue.length} file(s) for editing.` : 'No matching video files found.');
+    send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(state.config) });
+  } catch (error) {
+    state.scan.inProgress = false;
+    state.scan.phase = null;
+    state.message = `Unable to load queue: ${error.message}`;
+    publish();
+    send(res, 500, { error: state.message });
+  } finally {
+    scanInProgress = false;
+  }
 }
 
 async function handleQueue(req, res, url = null) {
   const session = await authenticate(req, res);
   if (!session) return;
   if (!authorizeApp(session, res)) return;
-  if (!state.active) hydrateIdleStateForUser(session.user_id);
+  if (!state.active && !scanInProgress) hydrateIdleStateForUser(session.user_id);
   if (req.method === 'GET') {
     const publicQueue = getPublicQueue();
     const offset = Math.max(0, floorInt(url?.searchParams.get('offset'), 0));
@@ -1684,8 +1739,8 @@ async function handleQueue(req, res, url = null) {
     });
     return;
   }
-  if (state.active || runnerPromise) {
-    send(res, 409, { error: 'Cannot edit the queue while a job is running.' });
+  if (state.active || runnerPromise || scanInProgress) {
+    send(res, 409, { error: 'Cannot edit the queue while a job is running or the queue is loading.' });
     return;
   }
   const body = await readBody(req);
@@ -1993,8 +2048,8 @@ async function handleStart(req, res) {
   const session = await authenticate(req, res);
   if (!session) return;
   if (!authorizeApp(session, res)) return;
-  if (state.active || runnerPromise) {
-    send(res, 409, { error: 'A job is already running.' });
+  if (state.active || runnerPromise || scanInProgress) {
+    send(res, 409, { error: scanInProgress ? 'Wait for the queue to finish loading.' : 'A job is already running.' });
     return;
   }
   const body = await readBody(req);
@@ -2267,8 +2322,10 @@ async function handleEvents(req, res) {
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
   });
-  const config = state.active && activeUserId === session.user_id ? state.config : getPersistedConfig(session.user_id);
-  if (!state.active) hydrateIdleStateForUser(session.user_id, config);
+  const config = (state.active && activeUserId === session.user_id) || scanInProgress
+    ? state.config
+    : getPersistedConfig(session.user_id);
+  if (!state.active && !scanInProgress) hydrateIdleStateForUser(session.user_id, config);
   res.write(`data: ${JSON.stringify({
     ...clonePublicState(config),
     viewer: { username: session.username, canUseApp: true },
