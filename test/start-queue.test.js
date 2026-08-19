@@ -34,3 +34,19 @@ test('ignores completed items and returns configured persisted work', () => {
     currentQueue: [],
   }), [{ fullPath: '/media/source/pending.mkv', status: 'pending', deleteSource: true }]);
 });
+
+test('resets retryable statuses to pending when a new run starts', () => {
+  assert.deepEqual(chooseStartQueue({
+    requestedSourceRoot: '/media/source',
+    persistedSourceRoot: '/media/source',
+    persistedQueue: [
+      { fullPath: '/media/source/failed.mkv', status: 'failed', tune: 'animation' },
+      { fullPath: '/media/source/stopped.mkv', status: 'stopped', audioTrack: 1 },
+    ],
+    currentSourceRoot: '/media/source',
+    currentQueue: [],
+  }), [
+    { fullPath: '/media/source/failed.mkv', status: 'pending', tune: 'animation' },
+    { fullPath: '/media/source/stopped.mkv', status: 'pending', audioTrack: 1 },
+  ]);
+});

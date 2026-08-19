@@ -94,6 +94,7 @@ Queue plan persistence:
 - saved queue order is preserved for matching files on that machine
 - successfully encoded or skipped files are removed from the saved plan
 - failed files remain in the saved plan
+- starting another batch resets saved failed or stopped files to pending before retrying them, so the visible queue reflects the actual processing order
 - if source subfolders become empty and are removed, the saved plan is cleaned up to match
 
 ## Adding Files During A Run

@@ -10,7 +10,7 @@ function rootsMatch(left, right) {
 function startableItems(queue = []) {
   return queue
     .filter(item => item?.fullPath && !TERMINAL_STATUSES.has(item.status))
-    .map(item => ({ ...item }));
+    .map(item => ({ ...item, status: 'pending' }));
 }
 
 function chooseStartQueue({

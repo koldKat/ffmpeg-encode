@@ -171,7 +171,7 @@ Before each `encodeFile()` call, the runner records `activeQueuePath`. `POST /ap
 
 ### Queue persistence
 
-Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed`; other unfinished states normalize to `pending`. Full path, tune, destination, audio index, audio metadata, and `deleteSource` are retained. The global deletion setting is stored in per-machine user settings; the per-file values are stored in the queue-plan JSON.
+Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed` while idle so their outcome is visible; all retryable items normalize to `pending` when a new run starts. Full path, tune, destination, audio index, audio metadata, and `deleteSource` are retained. The global deletion setting is stored in per-machine user settings; the per-file values are stored in the queue-plan JSON.
 
 The runner saves the plan after skips, failures, successful encodes, edits, and run termination. It preserves remaining work, not pass-level execution state.
 
