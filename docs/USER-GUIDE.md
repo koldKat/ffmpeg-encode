@@ -9,6 +9,7 @@ FFmpeg Webapp is a browser UI for the two-pass batch encode workflow. It scans a
 - You must register or log in.
 - Only the username `koldKat` is allowed to use the application.
 - Other accounts can exist, but they are blocked from the encode UI.
+- Mobile home-screen installation uses the VideoKat standalone app name and opaque dark icon assets so launchers cannot substitute a white canvas.
 
 ## Start The App
 
