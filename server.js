@@ -15,12 +15,14 @@ const {
 } = require('./server/delete-source-policy');
 const { ActiveQueueOrderError, reorderActiveQueue } = require('./server/active-queue-order');
 const { chooseStartQueue } = require('./server/start-queue');
+const { createStaticFileServer } = require('./server/static');
 const { writeVersionFileAtomic } = require('./server/app-version');
 
 const PORT = Number(process.env.PORT || 3017);
-const ROOT = path.join(__dirname, 'public');
 const REMOTE_USERNAME = 'koldKat';
-const MIME = {
+const serveFile = createStaticFileServer({
+  root: path.join(__dirname, 'public'),
+  mimeTypes: {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -28,7 +30,8 @@ const MIME = {
   '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
-};
+  },
+});
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.m4v']);
 const SSE_CLIENTS = new Set();
 const QUEUE_PREVIEW_LIMIT = 50;
@@ -574,25 +577,6 @@ function summarizeFfmpegError(stderr, fallback = 'ffmpeg failed') {
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
-}
-
-function serveFile(res, pathname) {
-  const cleanPath = pathname === '/' ? '/index.html' : (pathname === '/admin' ? '/admin.html' : pathname);
-  const filePath = path.join(ROOT, cleanPath);
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Forbidden');
-    return;
-  }
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Not found');
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
-    res.end(data);
-  });
 }
 
 function isLocalRequest(req) {
@@ -2345,7 +2329,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && url.pathname === '/admin') {
       if (!authorizeLocalAdmin(req, res)) return;
-      serveFile(res, '/admin');
+      serveFile(req, res, '/admin');
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/admin/state') {
@@ -2448,7 +2432,7 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/admin.html') {
         if (!authorizeLocalAdmin(req, res)) return;
       }
-      serveFile(res, decodeURIComponent(url.pathname));
+      serveFile(req, res, decodeURIComponent(url.pathname));
       return;
     }
     send(res, 404, { error: 'Not found' });

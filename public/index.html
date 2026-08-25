@@ -5,12 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0b1220">
   <title>FFmpeg Batch Encode</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3">
-  <link rel="apple-touch-icon" href="/icons/app-icon-180.png?v=3">
-  <link rel="manifest" href="/manifest.webmanifest?v=3">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/icons/app-icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <script>
+    try {
+      if (localStorage.getItem('ffmpeg_webapp_token')) document.documentElement.classList.add('restoring-session');
+    } catch {}
+  </script>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+  <div id="session-screen" class="auth-shell session-screen" role="status" aria-live="polite">
+    <div class="auth-card auth-card-narrow session-card">
+      <p class="eyebrow">Session Found</p>
+      <h1>Restoring dashboard</h1>
+      <p class="auth-copy">Checking your saved session…</p>
+      <div class="session-progress" aria-hidden="true"></div>
+    </div>
+  </div>
+
   <div id="login-screen" class="auth-shell">
     <div class="auth-card">
       <p class="eyebrow">Remote Access Enabled</p>

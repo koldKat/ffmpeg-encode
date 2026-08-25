@@ -4,6 +4,7 @@ const TOKEN_KEY = 'ffmpeg_webapp_token';
 const FOOTER_START_YEAR = 2026;
 
 const els = {
+  sessionScreen: document.getElementById('session-screen'),
   loginScreen: document.getElementById('login-screen'),
   blockedScreen: document.getElementById('blocked-screen'),
   appScreen: document.getElementById('app-screen'),
@@ -323,6 +324,8 @@ function escapeHtml(str) {
 }
 
 function showScreen(name) {
+  document.documentElement.classList.remove('restoring-session');
+  els.sessionScreen.style.display = name === 'session' ? 'flex' : 'none';
   els.loginScreen.style.display = name === 'login' ? 'flex' : 'none';
   els.blockedScreen.style.display = name === 'blocked' ? 'flex' : 'none';
   els.appScreen.style.display = name === 'app' ? 'block' : 'none';

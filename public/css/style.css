@@ -1487,6 +1487,50 @@ input[type=number] {
   padding: 10px;
 }
 
+.session-screen {
+  display: none;
+}
+
+.restoring-session .session-screen {
+  display: flex;
+}
+
+.restoring-session #login-screen {
+  display: none;
+}
+
+.session-card {
+  text-align: center;
+}
+
+.session-progress {
+  width: min(220px, 70%);
+  height: 3px;
+  margin: 0.7rem auto 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.session-progress::after {
+  content: '';
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: session-progress 1.1s ease-in-out infinite alternate;
+}
+
+@keyframes session-progress {
+  from { transform: translateX(-20%); }
+  to { transform: translateX(160%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-progress::after { animation: none; transform: translateX(70%); }
+}
+
 .auth-card {
   width: min(520px, 100%);
   padding: 0.8rem;

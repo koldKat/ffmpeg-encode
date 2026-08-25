@@ -14,6 +14,7 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | `server/queue-inspections.js` | Short-lived, user-scoped, single-use storage for probed append candidates |
 | `server/active-queue-order.js` | Validates and applies active pending-prefix reorder operations without moving the current encode |
 | `server/app-version.js` | Reads the boot seed and atomically mirrors manually saved app versions to `VERSION` |
+| `server/static.js` | Traversal-safe static files, MIME types, no-cache revalidation, and content ETags |
 | `public/js/app.js` | Login, setup form, queue editor, lazy list rendering, SSE client, and main dashboard |
 | `public/js/active-queue-add.js` | Active-run queue append form, request state, and user feedback |
 | `public/js/admin.js` | Local admin dashboard, one-second resource refresh, user management, and version editing |
@@ -327,7 +328,9 @@ The browser title displays overall percentage during a run. A disconnected strea
 
 ## Frontend State And Rendering
 
-The main client keeps its bearer token in `localStorage` as `ffmpeg_webapp_token`, public state in `lastState`, full editable queue in `fullQueue`, paged active queue in `activeQueue`, selection keys, and independent visible counts for the three long lists.
+The main client keeps its bearer token in `localStorage` as `ffmpeg_webapp_token`, public state in `lastState`, full editable queue in `fullQueue`, paged active queue in `activeQueue`, selection keys, and independent visible counts for the three long lists. A tiny inline pre-render check detects an existing token before the body paints and shows a neutral session-restoration screen instead of flashing the login form. After `/api/me` validates the token, the dashboard shell appears immediately; the heavier `/api/state` hydration continues afterward. Invalid or expired tokens reveal the login form.
+
+Maintained static assets use clean URLs with no manual `?v=N` values. The server sends `Cache-Control: no-cache` and a content ETag, so browsers revalidate on each load, use `304 Not Modified` for unchanged files, and pick up deployments without a version-bump cascade.
 
 Path autocomplete queries after 150 ms and supports mouse and keyboard selection. Audio suggestions come from probed metadata. Applying a language sends that language string; the server resolves each file independently and falls back to index `0` if absent.
 
