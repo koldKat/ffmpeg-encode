@@ -164,7 +164,7 @@ Folder grouping is frontend presentation only. Root-level files are individual s
 
 Discovery is restricted to the active source root using both lexical and real-path containment, excludes the staging root, recursively includes the standard video extensions, resolves duplicate paths, and removes paths already present in the internal queue.
 
-The browser presents inspected files in a modal that reuses the Queue panel's selection, bulk-apply, remove, and drag-order interaction model. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings, including `deleteSource`. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio choices are resolved per file from the probed metadata; a missing language or numeric track falls back to track `0`. Blank tune and destination values fall back to the active tune and that file's source directory.
+The browser shows an indeterminate progress bar while the combined active-run discovery/probe request is pending, then presents inspected files in a modal that reuses the Queue panel's selection, bulk-apply, remove, and drag-order interaction model. Both queue editors populate their audio selectors with numeric tracks and languages derived from FFprobe metadata. All inspected rows start selected; those checkboxes define both the bulk-action targets and the subset submitted for append. Each row exposes the full FFprobe audio-stream metadata so channel count is not mistaken for the number of selectable streams. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings, including `deleteSource`. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio languages are resolved independently per file, handling inconsistent language indexes; a missing language or numeric track falls back to track `0`. Blank tune and destination values fall back to the active tune and that file's source directory.
 
 The append coordinator immediately updates `counts.total`, scan and queue totals, the current-file denominator, derived progress, the persisted queue plan, and the active run snapshot. The runner loop reads `state.queue.length` on every iteration rather than retaining the original scan length, so appended entries are processed in the same run.
 
@@ -363,7 +363,7 @@ All require authentication and the protected username.
 | `POST /api/queue` | `{ filePaths, remove: true }` | Removes queue entries, not disk files |
 | `POST /api/queue` | `{ filePaths, tune }` | Applies tune |
 | `POST /api/queue` | `{ filePaths, saveTo }` | Applies expanded destination |
-| `POST /api/queue` | `{ filePaths, audioTrack }` | Applies numeric index or resolves language per file |
+| `POST /api/queue` | `{ filePaths, audioTrack }` | Applies a numeric index or resolves language per file; unavailable choices fall back to track `0` |
 | `POST /api/queue/inspect` | `{ path }` | Discovers and probes append candidates; returns files, derived audio metadata, and a short-lived inspection token |
 | `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, tune, audioTrack, saveTo, deleteSource }] }` | Consumes an inspection and appends the ordered, individually configured subset |
 | `POST /api/queue/delete-source` | `{ filePaths, deleteSource, all }` | Persists global or per-file source deletion; the active file is immutable |

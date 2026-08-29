@@ -1797,9 +1797,15 @@ async function handleQueue(req, res, url = null) {
     }
     if (hasAudioTrack) {
       const rawAudioTrack = String(body.audioTrack || '').trim();
-      item.audioTrack = /^\d+$/.test(rawAudioTrack)
-        ? normalizeAudioTrack(rawAudioTrack, 0)
-        : resolveAudioTrackByLanguage(item, rawAudioTrack);
+      if (/^\d+$/.test(rawAudioTrack)) {
+        const requestedAudioTrack = normalizeAudioTrack(rawAudioTrack, 0);
+        item.audioTrack = normalizeAudioTracks(item.audioTracks)
+          .some(track => track.index === requestedAudioTrack)
+          ? requestedAudioTrack
+          : 0;
+      } else {
+        item.audioTrack = resolveAudioTrackByLanguage(item, rawAudioTrack);
+      }
     }
     updated += 1;
   }

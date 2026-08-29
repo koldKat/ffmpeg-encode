@@ -6,20 +6,39 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-function describeAudio(item) {
-  const selected = String(item.audioTrack ?? 0);
+function describeAudioTrack(track) {
+  const parts = [`${track.index}`];
+  if (track.language) parts.push(String(track.language).toUpperCase());
+  if (track.codec) parts.push(track.codec);
+  if (track.channels) parts.push(`${track.channels}ch`);
+  if (track.title) parts.push(track.title);
+  return parts.join(' · ');
+}
+
+function audioSummary(item) {
+  const selectedTrack = String(item.audioTrack ?? 0);
   const tracks = Array.isArray(item.audioTracks) ? item.audioTracks : [];
-  const track = tracks.find(entry => String(entry.index) === selected);
-  if (track) return track.language ? `${track.language.toUpperCase()} (track ${track.index})` : `track ${track.index}`;
-  return selected;
+  if (!tracks.length) {
+    return {
+      selected: selectedTrack,
+      available: 'tracks unavailable',
+      title: 'FFprobe did not return audio-track metadata for this file.',
+    };
+  }
+  const selected = tracks.find(track => String(track.index) === selectedTrack);
+  return {
+    selected: selected ? describeAudioTrack(selected) : selectedTrack,
+    available: tracks.map(describeAudioTrack).join(' | '),
+    title: tracks.map(track => `audio ${describeAudioTrack(track)}`).join('\n'),
+  };
 }
 
 function collectAudioOptions(items) {
-  const options = new Map();
+  const options = new Map([['0', 'Track 0 (default)']]);
   for (const item of items) {
     for (const track of Array.isArray(item.audioTracks) ? item.audioTracks : []) {
       const language = String(track.language || '').trim().toLowerCase();
-      if (language) options.set(language, `Language ${language.toUpperCase()}`);
+      if (language) options.set(language, `Language ${language.toUpperCase()} (per file; fallback track 0)`);
       if (track.index != null) options.set(String(track.index), `Track ${track.index}`);
     }
   }
@@ -37,6 +56,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   const pathInput = document.getElementById('active-queue-path');
   const pathSuggestions = document.getElementById('path-suggestions-active-queue');
   const inspectButton = document.getElementById('active-queue-inspect-btn');
+  const inspectProgress = document.getElementById('active-queue-inspect-progress');
   const message = document.getElementById('active-queue-add-message');
   const dialog = document.getElementById('active-queue-dialog');
   const list = document.getElementById('active-queue-dialog-list');
@@ -46,7 +66,6 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   const clearButton = document.getElementById('active-dialog-clear');
   const tuneInput = document.getElementById('active-dialog-tune');
   const audioInput = document.getElementById('active-dialog-audio');
-  const audioOptions = document.getElementById('active-dialog-audio-options');
   const saveInput = document.getElementById('active-dialog-save');
   const saveSuggestions = document.getElementById('path-suggestions-active-dialog-save');
   const applyTuneButton = document.getElementById('active-dialog-apply-tune');
@@ -62,8 +81,8 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   let busy = false;
   let draggedIndex = null;
 
-  const required = [panel, form, pathInput, inspectButton, message, dialog, list, count,
-    selectionCount, selectAllButton, clearButton, tuneInput, audioInput, audioOptions,
+  const required = [panel, form, pathInput, inspectButton, inspectProgress, message, dialog, list, count,
+    selectionCount, selectAllButton, clearButton, tuneInput, audioInput,
     saveInput, applyTuneButton, applyAudioButton, applySaveButton, cancelButton, addButton];
   if (required.some(element => !element)) return { render() {} };
 
@@ -75,10 +94,13 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     message.classList.toggle('is-error', isError);
   }
 
-  function setBusy(value) {
+  function setBusy(value, inspecting = false) {
     busy = value;
     inspectButton.disabled = value;
-    addButton.disabled = value || !items.length;
+    inspectButton.textContent = value && inspecting ? 'Inspecting...' : 'Inspect';
+    inspectProgress.hidden = !(value && inspecting);
+    inspectButton.toggleAttribute('aria-busy', value && inspecting);
+    addButton.disabled = value || !selectedPaths.size;
   }
 
   function closeDialog() {
@@ -86,23 +108,32 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   }
 
   function renderAudioOptions() {
-    audioOptions.replaceChildren(...collectAudioOptions(items).map(([value, label]) => {
+    const currentValue = audioInput.value || '0';
+    audioInput.replaceChildren(...collectAudioOptions(items).map(([value, label]) => {
       const option = document.createElement('option');
       option.value = value;
-      option.label = label;
+      option.textContent = label;
       return option;
     }));
+    audioInput.value = [...audioInput.options].some(option => option.value === currentValue)
+      ? currentValue
+      : '0';
   }
 
   function renderItems() {
     count.textContent = `${items.length} file${items.length === 1 ? '' : 's'} ready to add`;
-    selectionCount.textContent = `${selectedPaths.size} selected`;
-    addButton.disabled = busy || !items.length;
+    selectionCount.textContent = `${selectedPaths.size} of ${items.length} selected`;
+    addButton.textContent = selectedPaths.size
+      ? `Add ${selectedPaths.size} to Queue`
+      : 'Add to Queue';
+    addButton.disabled = busy || !selectedPaths.size;
     [applyTuneButton, applyAudioButton, applySaveButton].forEach(button => {
       button.disabled = busy || !selectedPaths.size;
     });
     list.innerHTML = items.map((item, index) => {
       const checked = selectedPaths.has(item.fullPath) ? 'checked' : '';
+      const audio = audioSummary(item);
+      const audioTitle = escapeHtml(audio.title);
       return `
         <article class="list-item queue-item" data-editor-index="${index}">
           <input type="checkbox" class="queue-check" data-editor-select="${escapeHtml(item.fullPath)}" ${checked}>
@@ -115,7 +146,8 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
             <div class="queue-meta">
               <span class="meta-chip">file <strong>1</strong></span>
               <span class="meta-chip">tune <strong>${escapeHtml(item.tune || activeTune)}</strong></span>
-              <span class="meta-chip">audio <strong>${escapeHtml(describeAudio(item))}</strong></span>
+              <span class="meta-chip" title="${audioTitle}">audio <strong>${escapeHtml(audio.selected)}</strong></span>
+              <span class="meta-chip audio-track-chip" title="${audioTitle}">available <strong>${escapeHtml(audio.available)}</strong></span>
               <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.path)}</strong></span>
               <label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(item.fullPath)}" ${item.deleteSource ? 'checked' : ''}> delete source</label>
             </div>
@@ -137,7 +169,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     event.preventDefault();
     const requestedPath = pathInput.value.trim();
     if (!requestedPath || busy) return;
-    setBusy(true);
+    setBusy(true, true);
     setMessage('Inspecting files and audio tracks...');
     try {
       const data = await apiFetch('/api/queue/inspect', {
@@ -156,7 +188,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         saveTo: item.saveTo || item.path,
         deleteSource: item.deleteSource === true,
       }));
-      selectedPaths = new Set();
+      selectedPaths = new Set(items.map(item => item.fullPath));
       tuneInput.value = activeTune;
       audioInput.value = '0';
       saveInput.value = '';
@@ -185,14 +217,15 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   }
 
   async function append() {
-    if (!inspectionId || !items.length || busy) return;
+    if (!inspectionId || !selectedPaths.size || busy) return;
     setBusy(true);
     try {
+      const selectedItems = items.filter(item => selectedPaths.has(item.fullPath));
       const data = await apiFetch('/api/queue/append', {
         method: 'POST',
         body: JSON.stringify({
           inspectionId,
-          items: items.map(item => ({
+          items: selectedItems.map(item => ({
             fullPath: item.fullPath,
             tune: item.tune,
             audioTrack: item.audioTrack,

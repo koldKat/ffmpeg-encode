@@ -76,9 +76,9 @@ Bulk actions:
 - The queue auto-scrolls while dragging near the top or bottom edge, so long moves do not require step-by-step repositioning.
 - Queue cards stay compact by hiding the source path until you hover the file or folder name.
 - `Apply Tune` sets a tune for all selected files.
-- `Apply Audio` accepts either a language shown from the files' probed metadata or a zero-based audio stream number. Track `0` is the first audio stream, track `1` is the second, and so on.
+- `Apply Audio` provides a dropdown containing languages and zero-based audio stream numbers derived from the files' probed metadata. Track `0` is the first audio stream, track `1` is the second, and so on.
 - Language suggestions are derived from the loaded files; languages are not hardcoded. The server resolves the requested language separately for each selected file.
-- If a requested language is missing from a particular file, that file falls back to audio track `0`.
+- If a requested language or numeric track is missing from a particular file, that file falls back to audio track `0`.
 - `Apply Save Folder` sets the final destination folder for all selected files.
 - `Delete source` is independent per file. Root-level files show it directly. Grouped folders provide a compact expandable list so every file can be changed separately without ungrouping the queue.
 - The `X` button on each queue card removes that file or grouped subfolder from the editable queue only. It does not delete anything from disk.
@@ -103,15 +103,21 @@ Queue plan persistence:
 
 While a batch is active, the Queue card shows an append panel. Enter a supported video file or a folder inside the active source root, then press `Inspect`. A folder is scanned recursively and its new supported files are probed before anything is added.
 
-Inspection opens a queue-editor dialog matching the main Queue panel, with one selectable row per discovered file. In that dialog you can:
-- select any individual files, or use `Select All` and `Clear`
+An indeterminate progress bar remains visible while this combined discovery and media-probe request is running. The normal `Load File Queue` operation additionally reports the discovered count and determinate per-file probe progress once discovery finishes.
+
+Inspection opens a queue-editor dialog matching the main Queue panel, with one selectable row per discovered file. All discovered files start selected. In that dialog you can:
+- choose the exact files to append with the individual checkboxes, or use `Select All` and `Clear`
 - apply `Tune`, audio language/track, and save destination to the selected rows with the same bulk toolbar used by the main Queue panel
 - choose `Delete source` independently for every inspected file before adding it
-- choose audio suggestions derived only from the inspected files' metadata
+- choose a detected language or a numeric track from a selectable dropdown derived only from the inspected files' metadata
 - remove files you do not want to append
 - drag files into their initial processing order
 
-Press `Add to Queue` to append the remaining configured rows in their displayed order. Inspections expire after ten minutes and are single-use.
+Each row shows the selected audio stream and every stream reported by FFprobe, including language, codec, channel count, and title. A stereo stream is one selectable audio track with two channels, so it appears as track `0` with `2ch`; a second independently selectable audio stream appears as track `1`.
+
+Language choices are resolved independently for every selected file in both the normal queue editor and this active-run dialog. This handles files whose language indexes are swapped. If the selected language is absent from a file, that file uses track `0`.
+
+Press `Add to Queue` to append only the selected, configured rows in their displayed order. Inspections expire after ten minutes and are single-use.
 
 - Existing queue paths are ignored, so the same file is not added twice.
 - The staging folder and paths outside the active source root are rejected.

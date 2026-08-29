@@ -81,7 +81,6 @@ const els = {
   bulkTune: document.getElementById('bulk-tune'),
   bulkSaveTo: document.getElementById('bulk-save-to'),
   bulkAudioTrack: document.getElementById('bulk-audio-track'),
-  bulkAudioTrackList: document.getElementById('audio-track-options'),
   bulkSaveToList: document.getElementById('path-suggestions-save'),
   applyTuneBtn: document.getElementById('apply-tune-btn'),
   applySaveBtn: document.getElementById('apply-save-btn'),
@@ -409,29 +408,38 @@ function audioTrackSummary(audioTracks, selectedTrack) {
 }
 
 function updateAudioTrackOptions(queue = fullQueue) {
-  if (!els.bulkAudioTrackList) return;
-  const optionMap = new Map();
+  if (!els.bulkAudioTrack) return;
+  const currentValue = els.bulkAudioTrack.value || '0';
+  const optionMap = new Map([['0', 'Track 0 (default)']]);
   for (const item of Array.isArray(queue) ? queue : []) {
     for (const track of Array.isArray(item.audioTracks) ? item.audioTracks : []) {
       if (!track || track.mixed) continue;
       if (track.language) {
         const language = String(track.language).trim().toLowerCase();
-        optionMap.set(language, `language ${String(track.language).trim().toUpperCase()}`);
+        optionMap.set(language, `Language ${String(track.language).trim().toUpperCase()} (per file; fallback track 0)`);
       }
       if (track.index != null) {
-        optionMap.set(String(track.index), `track ${track.index}`);
+        optionMap.set(String(track.index), `Track ${track.index}`);
       }
     }
   }
-  els.bulkAudioTrackList.innerHTML = [...optionMap.entries()]
+  const options = [...optionMap.entries()]
     .sort(([a], [b]) => {
       const aNum = /^\d+$/.test(a);
       const bNum = /^\d+$/.test(b);
       if (aNum !== bNum) return aNum ? 1 : -1;
       return a.localeCompare(b, undefined, { numeric: true });
-    })
-    .map(([value, label]) => `<option value="${escapeHtml(value)}" label="${escapeHtml(label)}"></option>`)
-    .join('');
+    });
+  const optionsKey = JSON.stringify(options);
+  if (els.bulkAudioTrack.dataset.optionsKey !== optionsKey) {
+    els.bulkAudioTrack.innerHTML = options
+      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+      .join('');
+    els.bulkAudioTrack.dataset.optionsKey = optionsKey;
+  }
+  els.bulkAudioTrack.value = [...els.bulkAudioTrack.options].some(option => option.value === currentValue)
+    ? currentValue
+    : '0';
 }
 
 function audioTrackLayoutKey(audioTracks) {

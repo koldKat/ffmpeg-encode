@@ -252,7 +252,9 @@
               </div>
               <div class="queue-bulk-fields">
                 <input type="text" id="bulk-tune" list="tune-options" placeholder="film" aria-label="Apply tune">
-                <input type="text" id="bulk-audio-track" list="audio-track-options" value="0" placeholder="language or track" aria-label="Apply audio language or track">
+                <select id="bulk-audio-track" aria-label="Apply audio language or track">
+                  <option value="0">Track 0 (default)</option>
+                </select>
                 <div class="path-input-wrap">
                   <input type="text" id="bulk-save-to" placeholder="/path/to/output" aria-label="Apply save folder" autocomplete="off">
                   <div id="path-suggestions-save" class="path-suggestions-menu" hidden></div>
@@ -274,7 +276,6 @@
               <option value="psnr"></option>
               <option value="ssim"></option>
             </datalist>
-            <datalist id="audio-track-options"></datalist>
             <datalist id="preset-options">
               <option value="ultrafast"></option>
               <option value="superfast"></option>
@@ -299,6 +300,14 @@
                 <button type="submit" id="active-queue-inspect-btn" class="ghost-btn small-btn">Inspect</button>
               </div>
             </form>
+            <div id="active-queue-inspect-progress" class="queue-load-progress" role="status" aria-live="polite" hidden>
+              <div class="queue-load-meta">
+                <span>Discovering files and inspecting audio tracks...</span>
+              </div>
+              <div class="progress-track" role="progressbar" aria-label="Active queue inspection progress" aria-valuetext="Inspecting files">
+                <div class="progress-fill progress-orange queue-load-bar is-indeterminate active-queue-inspect-bar"></div>
+              </div>
+            </div>
             <div id="active-queue-add-message" class="active-queue-add-message" aria-live="polite"></div>
           </details>
           <dialog id="active-queue-dialog" class="panel queue-panel queue-editor-dialog">
@@ -310,8 +319,8 @@
               <div class="queue-toolbar">
                 <span id="active-dialog-selection-count" class="queue-selection-count">0 selected</span>
                 <div class="queue-toolbar-actions">
-                  <button type="button" id="active-dialog-select-all" class="ghost-btn small-btn">Select All</button>
-                  <button type="button" id="active-dialog-clear" class="ghost-btn small-btn">Clear</button>
+                  <button type="button" id="active-dialog-select-all" class="ghost-btn small-btn">Select All Files</button>
+                  <button type="button" id="active-dialog-clear" class="ghost-btn small-btn">Clear Selection</button>
                 </div>
               </div>
               <div class="queue-bulk-grid">
@@ -322,7 +331,9 @@
                 </div>
                 <div class="queue-bulk-fields">
                   <input type="text" id="active-dialog-tune" list="tune-options" placeholder="film">
-                  <input type="text" id="active-dialog-audio" list="active-dialog-audio-options" value="0" placeholder="language or track">
+                  <select id="active-dialog-audio" aria-label="Apply audio language or track">
+                    <option value="0">Track 0 (default)</option>
+                  </select>
                   <div class="path-input-wrap">
                     <input type="text" id="active-dialog-save" placeholder="/path/to/output" autocomplete="off">
                     <div id="path-suggestions-active-dialog-save" class="path-suggestions-menu" hidden></div>
@@ -334,7 +345,6 @@
                   <button type="button" id="active-dialog-apply-save" class="ghost-btn small-btn">Apply Save Folder</button>
                 </div>
               </div>
-              <datalist id="active-dialog-audio-options"></datalist>
             </div>
             <div id="active-queue-dialog-list" class="stack-list queue-editor-list"></div>
             <div class="queue-editor-dialog-foot">
