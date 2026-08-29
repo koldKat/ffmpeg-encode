@@ -1228,6 +1228,10 @@ input[type=number] {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.queue-item-active-pending {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .queue-item-current-locked {
   border-color: rgba(56, 189, 248, 0.24);
 }

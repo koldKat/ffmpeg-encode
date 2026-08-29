@@ -838,6 +838,7 @@ function renderQueue(queue, info = {}, active = false) {
       'queue-item',
       isReorderable ? '' : 'queue-item-static',
       active && itemIndex === 0 ? 'queue-item-current-locked' : '',
+      isActivePending ? 'queue-item-active-pending' : '',
     ].filter(Boolean).join(' ');
     const hoverPath = escapeHtml(item.hoverPath || item.subtitle || '');
     return `
