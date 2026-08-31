@@ -105,13 +105,13 @@ While a batch is active, the Queue card shows an append panel. Enter a supported
 
 An indeterminate progress bar remains visible while this combined discovery and media-probe request is running. The normal `Load File Queue` operation additionally reports the discovered count and determinate per-file probe progress once discovery finishes.
 
-Inspection opens a queue-editor dialog matching the main Queue panel, with one selectable row per discovered file. All discovered files start selected. In that dialog you can:
-- choose the exact files to append with the individual checkboxes, or use `Select All` and `Clear`
+Inspection opens a queue-editor dialog using the same selection units as the normal Queue panel: files directly under the active source root remain individual rows, while files in each deeper directory are represented by one directory row. All rows start selected. In that dialog you can:
+- choose the individual files or directory groups to append with their checkboxes, or use `Select All` and `Clear`
 - apply `Tune`, audio language/track, and save destination to the selected rows with the same bulk toolbar used by the main Queue panel
 - choose `Delete source` independently for every inspected file before adding it
 - choose a detected language or a numeric track from a selectable dropdown derived only from the inspected files' metadata
-- remove files you do not want to append
-- drag files into their initial processing order
+- remove individual files or entire directory groups you do not want to append
+- drag files or directory groups into their initial processing order; files inside a directory keep their internal order
 
 Each row shows the selected audio stream and every stream reported by FFprobe, including language, codec, channel count, and title. A stereo stream is one selectable audio track with two channels, so it appears as track `0` with `2ch`; a second independently selectable audio stream appears as track `1`.
 

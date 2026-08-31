@@ -1,3 +1,5 @@
+import { buildQueueSelectionUnits } from './queue-units.js';
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -18,6 +20,17 @@ function describeAudioTrack(track) {
 function audioSummary(item) {
   const selectedTrack = String(item.audioTrack ?? 0);
   const tracks = Array.isArray(item.audioTracks) ? item.audioTracks : [];
+  if (tracks.some(track => track?.mixed)) {
+    const layouts = tracks.filter(track => track?.mixed).flatMap(track => track.layouts || []);
+    const available = layouts.length
+      ? layouts.map(layout => `${layout.count} file(s): ${layout.label}`).join(' | ')
+      : 'mixed track layouts';
+    return {
+      selected: selectedTrack,
+      available,
+      title: available,
+    };
+  }
   if (!tracks.length) {
     return {
       selected: selectedTrack,
@@ -77,7 +90,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   let activeTune = 'film';
   let inspectionId = '';
   let items = [];
-  let selectedPaths = new Set();
+  let selectedUnitKeys = new Set();
   let busy = false;
   let draggedIndex = null;
 
@@ -100,7 +113,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     inspectButton.textContent = value && inspecting ? 'Inspecting...' : 'Inspect';
     inspectProgress.hidden = !(value && inspecting);
     inspectButton.toggleAttribute('aria-busy', value && inspecting);
-    addButton.disabled = value || !selectedPaths.size;
+    addButton.disabled = value || !selectedUnitKeys.size;
   }
 
   function closeDialog() {
@@ -120,36 +133,54 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       : '0';
   }
 
+  function getSelectionUnits() {
+    return buildQueueSelectionUnits(items, activeSourceRoot);
+  }
+
+  function getSelectedFilePaths(units = getSelectionUnits()) {
+    return new Set(units
+      .filter(unit => selectedUnitKeys.has(unit.key))
+      .flatMap(unit => unit.filePaths));
+  }
+
   function renderItems() {
-    count.textContent = `${items.length} file${items.length === 1 ? '' : 's'} ready to add`;
-    selectionCount.textContent = `${selectedPaths.size} of ${items.length} selected`;
-    addButton.textContent = selectedPaths.size
-      ? `Add ${selectedPaths.size} to Queue`
+    const units = getSelectionUnits();
+    const validKeys = new Set(units.map(unit => unit.key));
+    selectedUnitKeys = new Set([...selectedUnitKeys].filter(key => validKeys.has(key)));
+    const selectedFileCount = getSelectedFilePaths(units).size;
+    count.textContent = `${items.length} file${items.length === 1 ? '' : 's'} in ${units.length} queue item${units.length === 1 ? '' : 's'}`;
+    selectionCount.textContent = `${selectedUnitKeys.size} of ${units.length} selected`;
+    addButton.textContent = selectedFileCount
+      ? `Add ${selectedFileCount} to Queue`
       : 'Add to Queue';
-    addButton.disabled = busy || !selectedPaths.size;
+    addButton.disabled = busy || !selectedUnitKeys.size;
     [applyTuneButton, applyAudioButton, applySaveButton].forEach(button => {
-      button.disabled = busy || !selectedPaths.size;
+      button.disabled = busy || !selectedUnitKeys.size;
     });
-    list.innerHTML = items.map((item, index) => {
-      const checked = selectedPaths.has(item.fullPath) ? 'checked' : '';
-      const audio = audioSummary(item);
+    list.innerHTML = units.map((unit, index) => {
+      const checked = selectedUnitKeys.has(unit.key) ? 'checked' : '';
+      const audio = audioSummary(unit);
       const audioTitle = escapeHtml(audio.title);
+      const deleteItems = unit.deleteSourceItems || [];
+      const deleteControl = deleteItems.length === 1
+        ? `<label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(deleteItems[0].fullPath)}" ${deleteItems[0].deleteSource ? 'checked' : ''}> delete source</label>`
+        : `<details class="delete-source-group"><summary>delete source ${deleteItems.filter(item => item.deleteSource).length}/${deleteItems.length}</summary><div class="delete-source-group-list">${deleteItems.map(item => `<label><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(item.fullPath)}" ${item.deleteSource ? 'checked' : ''}> <span title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span></label>`).join('')}</div></details>`;
       return `
         <article class="list-item queue-item" data-editor-index="${index}">
-          <input type="checkbox" class="queue-check" data-editor-select="${escapeHtml(item.fullPath)}" ${checked}>
+          <input type="checkbox" class="queue-check" data-editor-select="${escapeHtml(unit.key)}" ${checked}>
           <button type="button" class="queue-drag-handle" draggable="true" data-editor-drag="${index}" aria-label="Drag to reorder" title="Drag to reorder">::</button>
           <div class="queue-item-body">
             <div class="list-item-head">
-              <div class="list-item-title queue-title-hint" data-name-hint="${escapeHtml(item.name)}" data-path-hint="${escapeHtml(item.path)}"><span class="queue-title-text">${escapeHtml(item.name)}</span></div>
+              <div class="list-item-title queue-title-hint" data-name-hint="${escapeHtml(unit.title)}" data-path-hint="${escapeHtml(unit.hoverPath)}"><span class="queue-title-text">${escapeHtml(unit.title)}</span></div>
               <span class="badge pending">pending</span>
             </div>
             <div class="queue-meta">
-              <span class="meta-chip">file <strong>1</strong></span>
-              <span class="meta-chip">tune <strong>${escapeHtml(item.tune || activeTune)}</strong></span>
+              <span class="meta-chip">${unit.type} <strong>${unit.filePaths.length}</strong></span>
+              <span class="meta-chip">tune <strong>${escapeHtml(unit.tune || activeTune)}</strong></span>
               <span class="meta-chip" title="${audioTitle}">audio <strong>${escapeHtml(audio.selected)}</strong></span>
               <span class="meta-chip audio-track-chip" title="${audioTitle}">available <strong>${escapeHtml(audio.available)}</strong></span>
-              <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.path)}</strong></span>
-              <label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(item.fullPath)}" ${item.deleteSource ? 'checked' : ''}> delete source</label>
+              <span class="meta-chip">save to <strong>${escapeHtml(unit.saveTo || unit.subtitle)}</strong></span>
+              ${deleteControl}
             </div>
           </div>
           <button type="button" class="queue-remove-btn" data-editor-remove="${index}" aria-label="Remove from additions" title="Remove from additions">X</button>
@@ -158,9 +189,10 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   }
 
   function applyToSelected(field, value, fallback) {
-    if (!selectedPaths.size) return;
+    if (!selectedUnitKeys.size) return;
+    const selectedFilePaths = getSelectedFilePaths();
     for (const item of items) {
-      if (selectedPaths.has(item.fullPath)) item[field] = value || fallback(item);
+      if (selectedFilePaths.has(item.fullPath)) item[field] = value || fallback(item);
     }
     renderItems();
   }
@@ -188,7 +220,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         saveTo: item.saveTo || item.path,
         deleteSource: item.deleteSource === true,
       }));
-      selectedPaths = new Set(items.map(item => item.fullPath));
+      selectedUnitKeys = new Set(getSelectionUnits().map(unit => unit.key));
       tuneInput.value = activeTune;
       audioInput.value = '0';
       saveInput.value = '';
@@ -217,10 +249,11 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   }
 
   async function append() {
-    if (!inspectionId || !selectedPaths.size || busy) return;
+    if (!inspectionId || !selectedUnitKeys.size || busy) return;
     setBusy(true);
     try {
-      const selectedItems = items.filter(item => selectedPaths.has(item.fullPath));
+      const selectedFilePaths = getSelectedFilePaths();
+      const selectedItems = items.filter(item => selectedFilePaths.has(item.fullPath));
       const data = await apiFetch('/api/queue/append', {
         method: 'POST',
         body: JSON.stringify({
@@ -241,7 +274,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       pathInput.value = activeSourceRoot;
       inspectionId = '';
       items = [];
-      selectedPaths.clear();
+      selectedUnitKeys.clear();
       if (data.state) onState(data.state);
     } catch (error) {
       setMessage(error.message, true);
@@ -254,11 +287,11 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   addButton.addEventListener('click', append);
   cancelButton.addEventListener('click', closeDialog);
   selectAllButton.addEventListener('click', () => {
-    selectedPaths = new Set(items.map(item => item.fullPath));
+    selectedUnitKeys = new Set(getSelectionUnits().map(unit => unit.key));
     renderItems();
   });
   clearButton.addEventListener('click', () => {
-    selectedPaths.clear();
+    selectedUnitKeys.clear();
     renderItems();
   });
   applyTuneButton.addEventListener('click', () => applyToSelected('tune', tuneInput.value.trim(), () => activeTune));
@@ -270,31 +303,61 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     if (input.hasAttribute('data-editor-delete-source')) {
       const item = items.find(entry => entry.fullPath === input.dataset.editorDeleteSource);
       if (item) item.deleteSource = input.checked;
-      renderItems();
+      const group = input.closest('.delete-source-group');
+      const summary = group?.querySelector('summary');
+      if (summary) {
+        const checks = [...group.querySelectorAll('[data-editor-delete-source]')];
+        summary.textContent = `delete source ${checks.filter(check => check.checked).length}/${checks.length}`;
+      }
       return;
     }
     if (!input.hasAttribute('data-editor-select')) return;
-    const fullPath = input.dataset.editorSelect;
-    if (input.checked) selectedPaths.add(fullPath);
-    else selectedPaths.delete(fullPath);
+    const unitKey = input.dataset.editorSelect;
+    if (input.checked) selectedUnitKeys.add(unitKey);
+    else selectedUnitKeys.delete(unitKey);
     renderItems();
   });
   list.addEventListener('click', event => {
     const button = event.target instanceof Element ? event.target.closest('[data-editor-remove]') : null;
     if (!(button instanceof HTMLElement)) return;
-    const [removed] = items.splice(Number(button.dataset.editorRemove), 1);
-    if (removed) selectedPaths.delete(removed.fullPath);
+    const unit = getSelectionUnits()[Number(button.dataset.editorRemove)];
+    if (!unit) return;
+    const removedPaths = new Set(unit.filePaths);
+    items = items.filter(item => !removedPaths.has(item.fullPath));
+    selectedUnitKeys.delete(unit.key);
     renderAudioOptions();
     renderItems();
   });
+
+  function updateDragMarkers(overIndex = draggedIndex) {
+    list.querySelectorAll('[data-editor-index]').forEach(row => {
+      const index = Number(row.dataset.editorIndex);
+      row.classList.toggle('queue-item-dragging', index === draggedIndex);
+      row.classList.toggle('queue-item-drop-target', index === overIndex && index !== draggedIndex);
+    });
+  }
+
+  function clearDragMarkers() {
+    draggedIndex = null;
+    updateDragMarkers();
+  }
+
   list.addEventListener('dragstart', event => {
     const handle = event.target;
     if (!(handle instanceof HTMLElement) || !handle.hasAttribute('data-editor-drag')) return;
     draggedIndex = Number(handle.dataset.editorDrag);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(draggedIndex));
+    }
+    updateDragMarkers();
   });
   list.addEventListener('dragover', event => {
-    if (draggedIndex != null) event.preventDefault();
+    if (draggedIndex == null) return;
+    event.preventDefault();
+    const row = event.target instanceof Element ? event.target.closest('[data-editor-index]') : null;
+    const overIndex = row instanceof HTMLElement ? Number(row.dataset.editorIndex) : draggedIndex;
+    updateDragMarkers(overIndex);
   });
   list.addEventListener('drop', event => {
     if (draggedIndex == null) return;
@@ -302,14 +365,17 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     const row = event.target instanceof Element ? event.target.closest('[data-editor-index]') : null;
     const targetIndex = row instanceof HTMLElement ? Number(row.dataset.editorIndex) : draggedIndex;
     if (targetIndex !== draggedIndex) {
-      const [movedItem] = items.splice(draggedIndex, 1);
-      items.splice(targetIndex, 0, movedItem);
+      const units = getSelectionUnits();
+      const [movedUnit] = units.splice(draggedIndex, 1);
+      units.splice(targetIndex, 0, movedUnit);
+      const itemsByPath = new Map(items.map(item => [item.fullPath, item]));
+      items = units.flatMap(unit => unit.filePaths.map(filePath => itemsByPath.get(filePath)).filter(Boolean));
       renderItems();
     }
-    draggedIndex = null;
+    clearDragMarkers();
   });
   list.addEventListener('dragend', () => {
-    draggedIndex = null;
+    clearDragMarkers();
   });
 
   return {
@@ -322,7 +388,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         pathInput.value = '';
         inspectionId = '';
         items = [];
-        selectedPaths.clear();
+        selectedUnitKeys.clear();
         setMessage('');
         return;
       }

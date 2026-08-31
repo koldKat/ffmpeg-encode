@@ -1,4 +1,5 @@
 import { createActiveQueueAdder } from './active-queue-add.js';
+import { buildQueueSelectionUnits } from './queue-units.js';
 
 const TOKEN_KEY = 'ffmpeg_webapp_token';
 const FOOTER_START_YEAR = 2026;
@@ -442,123 +443,8 @@ function updateAudioTrackOptions(queue = fullQueue) {
     : '0';
 }
 
-function audioTrackLayoutKey(audioTracks) {
-  const tracks = Array.isArray(audioTracks) ? audioTracks : [];
-  if (!tracks.length) return '';
-  return tracks
-    .map(track => [
-      track.index ?? '',
-      track.language || '',
-      track.codec || '',
-      track.channels ?? '',
-      track.title || '',
-    ].join(':'))
-    .join('|');
-}
-
-function sharedFolderAudioTracks(audioTrackLists) {
-  const lists = (audioTrackLists || []).filter(list => Array.isArray(list) && list.length);
-  if (!lists.length) return [];
-  const firstKey = audioTrackLayoutKey(lists[0]);
-  if (lists.every(list => audioTrackLayoutKey(list) === firstKey)) {
-    return lists[0];
-  }
-  const layoutMap = new Map();
-  for (const list of lists) {
-    const key = audioTrackLayoutKey(list);
-    const label = list.map(track => describeAudioTrack(track)).join(' | ');
-    const current = layoutMap.get(key) || { count: 0, label };
-    current.count += 1;
-    layoutMap.set(key, current);
-  }
-  return [{ mixed: true, layouts: [...layoutMap.values()] }];
-}
-
 function getQueueSelectionUnits(queue = fullQueue, state = lastState) {
-  const sourceRoot = state?.config?.sourceRoot || '';
-  const units = [];
-  const folderMap = new Map();
-
-  for (const item of queue) {
-    const relDirRaw = sourceRoot ? (item.path === sourceRoot ? '.' : item.path.startsWith(`${sourceRoot}${'/'}`) ? item.path.slice(sourceRoot.length + 1) : item.path) : item.path;
-    const relDir = !relDirRaw || relDirRaw === item.path ? '.' : relDirRaw;
-    if (relDir === '.') {
-      units.push({
-        key: `file:${item.fullPath}`,
-        type: 'file',
-        title: item.name,
-        subtitle: item.path,
-        hoverPath: item.path,
-        filePaths: [item.fullPath],
-        tune: item.tune || 'film',
-        saveTo: item.saveTo || item.path,
-        audioTrack: item.audioTrack ?? 0,
-        audioTracks: item.audioTracks || [],
-        status: item.status || 'pending',
-        deleteSource: item.deleteSource === true,
-        deleteSourceItems: [{
-          fullPath: item.fullPath,
-          name: item.name,
-          deleteSource: item.deleteSource === true,
-        }],
-      });
-      continue;
-    }
-
-    let unit = folderMap.get(relDir);
-    if (!unit) {
-      unit = {
-        key: `dir:${relDir}`,
-        type: 'folder',
-        title: relDir,
-        subtitle: item.path,
-        hoverPath: item.path,
-        filePaths: [],
-        tuneValues: new Set(),
-        saveValues: new Set(),
-        audioTrackValues: new Set(),
-        audioTrackLists: [],
-        statuses: new Set(),
-        deleteSourceValues: [],
-      };
-      folderMap.set(relDir, unit);
-      units.push(unit);
-    }
-    unit.filePaths.push(item.fullPath);
-    unit.tuneValues.add(item.tune || 'film');
-    unit.saveValues.add(item.saveTo || item.path);
-    unit.audioTrackValues.add(item.audioTrack ?? 0);
-    unit.audioTrackLists.push(item.audioTracks || []);
-    unit.statuses.add(item.status || 'pending');
-    unit.deleteSourceValues.push({
-      fullPath: item.fullPath,
-      name: item.name,
-      deleteSource: item.deleteSource === true,
-    });
-  }
-
-  return units.map(unit => {
-    if (unit.type === 'file') return unit;
-    const tune = unit.tuneValues.size === 1 ? [...unit.tuneValues][0] : 'mixed';
-    const saveTo = unit.saveValues.size === 1 ? [...unit.saveValues][0] : 'mixed';
-    const audioTrack = unit.audioTrackValues.size === 1 ? [...unit.audioTrackValues][0] : 'mixed';
-    const status = unit.statuses.size === 1 ? [...unit.statuses][0] : 'mixed';
-    return {
-      key: unit.key,
-      type: unit.type,
-      title: unit.title,
-      subtitle: `${unit.subtitle} • ${unit.filePaths.length} file(s)`,
-      hoverPath: unit.hoverPath,
-      filePaths: unit.filePaths,
-      tune,
-      saveTo,
-      audioTrack,
-      audioTracks: sharedFolderAudioTracks(unit.audioTrackLists),
-      status,
-      deleteSource: unit.deleteSourceValues.every(item => item.deleteSource),
-      deleteSourceItems: unit.deleteSourceValues,
-    };
-  });
+  return buildQueueSelectionUnits(queue, state?.config?.sourceRoot || '');
 }
 
 function getSelectedQueueFilePaths() {
