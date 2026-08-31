@@ -8,21 +8,36 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 
 | Component | Responsibility |
 | --- | --- |
-| `server.js` | HTTP routing, auth gates, global run state, queue orchestration, FFmpeg execution, progress, file promotion, and SSE |
+| `server.js` | Application composition root: global run state, queue orchestration, FFmpeg execution, progress, file promotion, SSE, and route-handler wiring |
 | `server/db.js` | SQLite schema, migrations, users, sessions, settings, queue plans, run snapshots, metadata, and lifetime aggregates |
+| `server/http-router.js` | Declarative HTTP route table, admin static-file gate, and static/API dispatch |
+| `server/queue-model.js` | Configuration normalization, audio-language resolution, queue-item construction, persisted-plan serialization, and saved-order merge |
+| `server/media-probe.js` | Supported-file traversal, file sizing, FFprobe JSON parsing, and bounded-concurrency audio probing |
+| `server/encoding-math.js` | Target-size rounding and video-bitrate calculation |
 | `server/queue-append.js` | Active-run path containment, recursive supported-file discovery, and duplicate filtering |
 | `server/queue-inspections.js` | Short-lived, user-scoped, single-use storage for probed append candidates |
 | `server/active-queue-order.js` | Validates and applies active pending-prefix reorder operations without moving the current encode |
 | `server/app-version.js` | Reads the boot seed and atomically mirrors manually saved app versions to `VERSION` |
 | `server/static.js` | Traversal-safe static files, MIME types, no-cache revalidation, and content ETags |
-| `public/js/app.js` | Login, setup form, queue editor, lazy list rendering, SSE client, and main dashboard |
+| `public/js/app.js` | Browser composition root: application state, SSE lifecycle, API actions, queue interactions, and feature wiring |
 | `public/js/active-queue-add.js` | Active-run queue append form, request state, and user feedback |
+| `public/js/queue-units.js` | Shared root-file/directory grouping and mixed-value summaries for both queue editors |
+| `public/js/path-autocomplete.js` | Reusable asynchronous path suggestions and keyboard navigation |
+| `public/js/formatters.js` | Shared display formatting and HTML escaping |
+| `public/js/current-file-view.js` | Current-file card and metrics rendering |
+| `public/js/activity-view.js` | Latest-completed, run-log, and lifetime-card rendering |
 | `public/js/admin.js` | Local admin dashboard, one-second resource refresh, user management, and version editing |
 | `public/index.html` | Main application markup |
 | `public/admin.html` | Local admin markup |
 | `public/css/style.css` | Shared responsive presentation |
 
 There is no application framework, build step, worker queue, or external API service.
+
+## Module Boundaries
+
+The application uses explicit composition roots instead of cross-module globals. `server.js` constructs the queue model, media probe, encoding math, static file server, router, and the live runtime. Browser `app.js` owns client state and connects API/SSE events to focused view and input modules.
+
+Modules accept their dependencies at construction time where they need environment-specific behavior. For example, the queue model receives filesystem, path, home-expansion, and deletion-policy dependencies; browser path completion receives the authenticated API function and escaping function. This keeps core behavior directly testable and prevents feature modules from importing the entire application controller.
 
 ## Runtime Dependencies
 

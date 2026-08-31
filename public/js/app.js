@@ -1,5 +1,9 @@
 import { createActiveQueueAdder } from './active-queue-add.js';
 import { buildQueueSelectionUnits } from './queue-units.js';
+import { escapeHtml, formatDate, formatHms, formatPct, formatSize } from './formatters.js';
+import { createPathAutocomplete } from './path-autocomplete.js';
+import { createCurrentFileView } from './current-file-view.js';
+import { createActivityView } from './activity-view.js';
 
 const TOKEN_KEY = 'ffmpeg_webapp_token';
 const FOOTER_START_YEAR = 2026;
@@ -91,6 +95,9 @@ const els = {
   footerCopy: document.getElementById('app-footer-copy'),
 };
 
+const currentFileView = createCurrentFileView({ els, escapeHtml, formatDate, formatHms, formatPct, formatSize });
+const activityView = createActivityView({ els, escapeHtml, formatDate, formatPct, formatSize });
+
 const footerYear = new Date().getFullYear();
 els.footerCopy.textContent = footerYear > FOOTER_START_YEAR
   ? `© ${FOOTER_START_YEAR}-${footerYear}`
@@ -117,148 +124,10 @@ let lastQueueRenderKey = '';
 let dragState = null;
 let activeQueueAdder = null;
 let deleteSourceUpdateQueue = Promise.resolve();
-const pathSuggestTimers = new Map();
 const QUEUE_DRAG_SCROLL_EDGE = 72;
 const QUEUE_DRAG_SCROLL_STEP = 28;
 const LIST_PAGE_SIZE = 50;
 const ACTIVE_QUEUE_PAGE_SIZE = LIST_PAGE_SIZE;
-
-function renderPathSuggestions(menuEl, suggestions, activeIndex = -1) {
-  if (!menuEl) return;
-  const safeSuggestions = Array.isArray(suggestions) ? suggestions : [];
-  if (!safeSuggestions.length) {
-    menuEl.innerHTML = '';
-    menuEl.hidden = true;
-    return;
-  }
-  menuEl.hidden = false;
-  menuEl.innerHTML = safeSuggestions.map((value, index) => `
-    <button
-      type="button"
-      class="path-suggestion-item${index === activeIndex ? ' is-active' : ''}"
-      data-path-value="${escapeHtml(value)}"
-      title="${escapeHtml(value)}"
-    >${escapeHtml(value)}</button>
-  `).join('');
-}
-
-async function fetchPathSuggestions(query) {
-  if (!query || query.trim().length < 1) return [];
-  const data = await apiFetch(`/api/path-suggest?q=${encodeURIComponent(query)}`);
-  return Array.isArray(data.suggestions) ? data.suggestions : [];
-}
-
-function wirePathAutocomplete(inputEl, menuEl) {
-  if (!inputEl || !menuEl) return;
-  let suggestions = [];
-  let activeIndex = -1;
-  let requestId = 0;
-
-  const closeMenu = () => {
-    activeIndex = -1;
-    suggestions = [];
-    renderPathSuggestions(menuEl, [], -1);
-  };
-
-  const applySuggestion = value => {
-    const endsWithSlash = /[\\/]$/.test(value);
-    inputEl.value = endsWithSlash ? value : `${value}/`;
-    inputEl.focus();
-    inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-    loadSuggestions(inputEl.value.trim());
-  };
-
-  const revealActiveSuggestion = () => {
-    const activeEl = menuEl.querySelector('.path-suggestion-item.is-active');
-    if (!(activeEl instanceof HTMLElement)) return;
-    activeEl.scrollIntoView({ block: 'nearest' });
-  };
-
-  const redraw = () => {
-    renderPathSuggestions(menuEl, suggestions, activeIndex);
-    revealActiveSuggestion();
-  };
-
-  const loadSuggestions = async value => {
-    const nextRequestId = requestId + 1;
-    requestId = nextRequestId;
-    if (!value) {
-      closeMenu();
-      return;
-    }
-    try {
-      const nextSuggestions = await fetchPathSuggestions(value);
-      if (requestId !== nextRequestId) return;
-      suggestions = nextSuggestions;
-      activeIndex = suggestions.length ? 0 : -1;
-      redraw();
-    } catch {
-      if (requestId !== nextRequestId) return;
-      closeMenu();
-    }
-  };
-
-  const schedule = () => {
-    const value = inputEl.value.trim();
-    const existing = pathSuggestTimers.get(inputEl);
-    if (existing) clearTimeout(existing);
-    pathSuggestTimers.set(inputEl, setTimeout(async () => {
-      await loadSuggestions(value);
-    }, 150));
-  };
-
-  menuEl.addEventListener('mousedown', event => {
-    event.preventDefault();
-  });
-  menuEl.addEventListener('click', event => {
-    const target = event.target instanceof Element ? event.target.closest('[data-path-value]') : null;
-    if (!(target instanceof HTMLElement)) return;
-    const value = target.dataset.pathValue;
-    if (!value) return;
-    applySuggestion(value);
-  });
-
-  inputEl.addEventListener('input', schedule);
-  inputEl.addEventListener('focus', schedule);
-  inputEl.addEventListener('blur', () => {
-    window.setTimeout(() => closeMenu(), 120);
-  });
-  inputEl.addEventListener('keydown', event => {
-    if (!suggestions.length) return;
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      activeIndex = Math.min(suggestions.length - 1, activeIndex + 1);
-      redraw();
-      return;
-    }
-    if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      activeIndex = Math.max(0, activeIndex - 1);
-      redraw();
-      return;
-    }
-    if (event.key === 'Home') {
-      event.preventDefault();
-      activeIndex = 0;
-      redraw();
-      return;
-    }
-    if (event.key === 'End') {
-      event.preventDefault();
-      activeIndex = suggestions.length - 1;
-      redraw();
-      return;
-    }
-    if (event.key === 'Enter' && activeIndex >= 0 && activeIndex < suggestions.length) {
-      event.preventDefault();
-      applySuggestion(suggestions[activeIndex]);
-      return;
-    }
-    if (event.key === 'Escape') {
-      closeMenu();
-    }
-  });
-}
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
@@ -270,57 +139,6 @@ function setToken(token) {
 
 function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
-}
-
-function formatPct(value) {
-  return value == null || Number.isNaN(Number(value)) ? 'N/A' : `${Number(value).toFixed(1)}%`;
-}
-
-function formatSize(bytes) {
-  const rawValue = Number(bytes || 0);
-  const sign = rawValue < 0 ? '-' : '';
-  const value = Math.abs(rawValue);
-  const KB = 1000;
-  const MB = 1000000;
-  const GB = 1024 * MB;
-  const TB = 1024 * GB;
-  if (value >= TB) return `${sign}${(value / TB).toFixed(3)} TB`;
-  if (value >= GB) return `${sign}${(value / GB).toFixed(2)} GB`;
-  if (value >= MB) return `${sign}${(value / MB).toFixed(1)} MB`;
-  if (value >= KB) return `${sign}${(value / KB).toFixed(1)} KB`;
-  return `${sign}${Math.round(value)} B`;
-}
-
-function formatHms(totalSeconds) {
-  if (totalSeconds == null || totalSeconds === '') return 'N/A';
-  const safe = Math.max(0, Math.floor(Number(totalSeconds) || 0));
-  const days = Math.floor(safe / 86400);
-  const hours = Math.floor((safe % 86400) / 3600);
-  const minutes = Math.floor((safe % 3600) / 60);
-  const seconds = safe % 60;
-  if (days > 0) return `${days} ${days === 1 ? 'day' : 'days'} ${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-}
-
-function formatDate(iso) {
-  if (!iso) return 'N/A';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'N/A';
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  return `${day}/${month}/${year}, ${hours}:${minutes}:${seconds}`;
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function showScreen(name) {
@@ -361,11 +179,6 @@ function configFromForm() {
     encThreads: Number(els.encThreads.value),
     deleteSource: els.deleteAllSources.checked,
   };
-}
-
-function metricCard(label, value, wide = false) {
-  const cls = wide ? 'metric-card metric-wide' : 'metric-card';
-  return `<article class="${cls}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
 }
 
 function describeAudioTrack(track) {
@@ -599,50 +412,6 @@ function getQueueRenderKey(state) {
   ].join('::');
 }
 
-function renderCurrentFile(current, progress, status) {
-  if (!current) {
-    els.currentFileKicker.textContent = 'Waiting for a job';
-    els.currentName.textContent = 'No active file';
-    els.currentNameHint.setAttribute('data-name-hint', 'No active file');
-    els.currentPath.textContent = '';
-    els.fileProgressTitle.textContent = 'File progress';
-    els.fileProgressLabel.textContent = '0.0%';
-    els.fileProgressBar.style.width = '0%';
-    els.currentMetrics.innerHTML = [
-      metricCard('File', 'N/A'),
-      metricCard('Input size | Target size | Length', 'N/A'),
-      metricCard('Pass', status === 'done' ? 'Done' : 'N/A'),
-      metricCard('Speed / Frame rate', 'N/A'),
-      metricCard('Frames', 'N/A'),
-      metricCard('File ETA / Finish time', 'N/A'),
-      metricCard('File size', 'N/A', true),
-    ].join('');
-    return;
-  }
-
-  const overallPct = Number(progress.overallPct || 0).toFixed(2);
-  const fileSizeLine = `${formatSize(current.fileSizeBytes)} (current savings ${formatSize(current.savingsBytes)} / ${formatPct(current.savingsPct)}, estimated ${current.estimatedSizeMb || current.targetSizeMb} MB, estimated savings ${formatPct(current.estimatedSavingsPct)}, bitrate ${current.bitrateKbps ? `${Number(current.bitrateKbps).toFixed(1)} kbps` : 'N/A'})`;
-  const isMoving = current.phase === 'moving';
-
-  els.currentFileKicker.textContent = `File ${current.index} / ${current.total} • Pass ${String(current.passLabel || 'N/A').replace('/', ' / ')}`;
-  els.currentName.textContent = current.name;
-  els.currentNameHint.setAttribute('data-name-hint', current.name);
-  els.currentPath.textContent = '';
-  els.fileProgressTitle.textContent = isMoving ? 'Move progress' : 'File progress';
-  els.fileProgressLabel.textContent = `${Number(current.fileProgressPct || 0).toFixed(1)}%`;
-  els.fileProgressBar.style.width = `${Math.max(0, Math.min(100, Number(current.fileProgressPct || 0)))}%`;
-
-  els.currentMetrics.innerHTML = [
-    metricCard('File', `${current.index} / ${current.total} (${overallPct}%)`),
-    metricCard('Input size | Target size | Length', `${formatSize(current.srcSizeBytes)} | ${current.targetSizeMb} MB | ${formatHms(current.durationSeconds)}`),
-    metricCard('Pass', String(current.passLabel || 'N/A').replace('/', ' / ')),
-    metricCard('Speed / Frame rate', `${current.speed || 'N/A'} | ${current.fps || 'N/A'} FPS`),
-    metricCard('Frames', `${current.frame || 'N/A'} / ${current.totalFrames || 'N/A'}`),
-    metricCard('File ETA / Finish time', `${formatHms(current.fileRemainingSeconds)} | ${formatDate(current.finishTimeIso)}`),
-    metricCard('File size', fileSizeLine, true),
-  ].join('');
-}
-
 function renderQueue(queue, info = {}, active = false) {
   const isEditable = !active;
   if (isEditable) updateAudioTrackOptions(Array.isArray(queue) ? queue : []);
@@ -752,53 +521,6 @@ function renderQueue(queue, info = {}, active = false) {
   updateQueueDragMarkers();
 }
 
-function renderRecent(list) {
-  if (!list.length) {
-    els.recentList.innerHTML = '<div class="empty-state">Encoded files will collect here in reverse chronological order.</div>';
-    return;
-  }
-  els.recentList.innerHTML = [...list].reverse().slice(0, recentVisibleCount).map(item => `
-    <article class="list-item">
-      <div class="list-item-head">
-        <div class="list-item-title">${escapeHtml(item)}</div>
-        <span class="badge encoded">done</span>
-      </div>
-    </article>
-  `).join('');
-}
-
-function renderLog(events) {
-  if (!events.length) {
-    els.logList.innerHTML = '<div class="empty-state">State changes, skips, failures, and completion messages will appear here.</div>';
-    return;
-  }
-  els.logList.innerHTML = [...events].reverse().slice(0, logVisibleCount).map(item => `
-    <article class="log-item">
-      <div class="log-item-head">
-        <strong>${escapeHtml(item.message)}</strong>
-        <span class="badge ${escapeHtml(item.kind)}">${escapeHtml(item.kind)}</span>
-      </div>
-      <div class="log-item-sub">${escapeHtml(formatDate(item.time))}</div>
-    </article>
-  `).join('');
-}
-
-function renderLifetime(lifetime) {
-  els.lifetimeFiles.textContent = String(lifetime.encodedTotal || 0);
-  els.lifetimeFilesSub.textContent = `encoded: ${lifetime.encodedTotal || 0}, skipped: ${lifetime.skippedTotal || 0}, failed: ${lifetime.failedTotal || 0}`;
-  els.lifetimeSavings.textContent = formatSize(lifetime.savingsBytes || 0);
-  const averageSavings = lifetime.averageSavingsBytes == null ? 'average savings/file: N/A' : `average savings/file: ${formatSize(lifetime.averageSavingsBytes)}`;
-  const totalPct = lifetime.savingsPct == null ? 'total: N/A' : `total: ${formatPct(lifetime.savingsPct)}`;
-  els.lifetimeSavingsSub.innerHTML = `${escapeHtml(averageSavings)}<br>${escapeHtml(totalPct)}`;
-  els.lifetimeSpeed.textContent = lifetime.completedSpeedX == null ? 'N/A' : `${Number(lifetime.completedSpeedX).toFixed(2)}x`;
-  const bitrate = lifetime.averageBitrateKbps == null ? 'average bitrate: N/A' : `average bitrate: ${Number(lifetime.averageBitrateKbps).toFixed(1)} kbps`;
-  const filesPerRun = lifetime.averageFilesPerRun == null ? 'average files/run: N/A' : `average files/run: ${Number(lifetime.averageFilesPerRun).toFixed(1)}`;
-  els.lifetimeSpeedSub.innerHTML = `${escapeHtml(bitrate)}<br>${escapeHtml(filesPerRun)}`;
-  els.lifetimeHealth.textContent = formatSize(lifetime.dbSize || 0);
-  const lastActivity = lifetime.lastActivityAt ? formatDate(new Date(lifetime.lastActivityAt * 1000).toISOString()) : 'N/A';
-  els.lifetimeHealthSub.textContent = `last activity ${lastActivity}`;
-}
-
 function sanitizeHeroMessage(message) {
   return String(message || 'Ready.').replace(/\s+\(audio track \d+\)$/i, '');
 }
@@ -874,7 +596,7 @@ function render(state, options = {}) {
   els.overallProgressLabel.textContent = `${overall.toFixed(2)}%`;
   els.overallProgressBar.style.width = `${Math.max(0, Math.min(100, overall))}%`;
 
-  renderCurrentFile(state.currentFile, state.progress || {}, state.status);
+  currentFileView.render(state.currentFile, state.progress || {}, state.status);
   const renderedQueue = getRenderedQueue(state);
   const renderedQueueInfo = state.active
     ? {
@@ -888,9 +610,9 @@ function render(state, options = {}) {
     renderQueue(renderedQueue, renderedQueueInfo, Boolean(state.active));
     lastQueueRenderKey = queueRenderKey;
   }
-  renderRecent(state.recentCompleted || []);
-  renderLog(state.recentEvents || []);
-  renderLifetime(state.lifetime || {});
+  activityView.renderRecent(state.recentCompleted || [], recentVisibleCount);
+  activityView.renderLog(state.recentEvents || [], logVisibleCount);
+  activityView.renderLifetime(state.lifetime || {});
 
   const active = Boolean(state.active);
   activeQueueAdder?.render(state);
@@ -989,6 +711,8 @@ async function apiFetch(url, options = {}) {
   }
   return data;
 }
+
+const { wire: wirePathAutocomplete } = createPathAutocomplete({ apiFetch, escapeHtml });
 
 function closeEvents() {
   if (eventSource) {
@@ -1510,7 +1234,7 @@ wirePagedList(
   () => recentVisibleCount < (lastState?.recentCompleted?.length || 0),
   () => {
     recentVisibleCount += LIST_PAGE_SIZE;
-    renderRecent(lastState?.recentCompleted || []);
+    activityView.renderRecent(lastState?.recentCompleted || [], recentVisibleCount);
   },
 );
 
@@ -1519,7 +1243,7 @@ wirePagedList(
   () => logVisibleCount < (lastState?.recentEvents?.length || 0),
   () => {
     logVisibleCount += LIST_PAGE_SIZE;
-    renderLog(lastState?.recentEvents || []);
+    activityView.renderLog(lastState?.recentEvents || [], logVisibleCount);
   },
 );
 

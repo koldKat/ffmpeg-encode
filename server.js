@@ -17,6 +17,10 @@ const { ActiveQueueOrderError, reorderActiveQueue } = require('./server/active-q
 const { chooseStartQueue } = require('./server/start-queue');
 const { createStaticFileServer } = require('./server/static');
 const { writeVersionFileAtomic } = require('./server/app-version');
+const { createQueueModel } = require('./server/queue-model');
+const { createMediaProbe } = require('./server/media-probe');
+const { createEncodingMath } = require('./server/encoding-math');
+const { createHttpRouter } = require('./server/http-router');
 
 const PORT = Number(process.env.PORT || 3017);
 const REMOTE_USERNAME = 'koldKat';
@@ -55,6 +59,37 @@ const DEFAULTS = {
   encThreads: 0,
   deleteSource: false,
 };
+
+const queueModel = createQueueModel({
+  defaults: DEFAULTS,
+  expandHome,
+  fs,
+  path,
+  resolveDeleteSource,
+});
+const {
+  clampNonNegative,
+  createQueueItem,
+  defaultConfig,
+  mergePersistedQueuePlan,
+  normalizeAudioTrack,
+  normalizeAudioTracks,
+  normalizeConfig,
+  resolveAudioTrackByLanguage,
+  serializeQueuePlanItems,
+} = queueModel;
+const { enrichQueueAudioTracks, probeMedia, statSize, walkFiles } = createMediaProbe({
+  execFile,
+  fs,
+  path,
+  videoExtensions: VIDEO_EXTS,
+  isPreservedSourceOutput,
+  normalizeAudioTracks,
+});
+const { computeTargetSizeMb, computeVideoKbps } = createEncodingMath({
+  defaults: DEFAULTS,
+  clampNonNegative,
+});
 
 let currentChild = null;
 let stopRequested = false;
@@ -114,100 +149,9 @@ function shutdownServer(exitCode = 0) {
   setTimeout(() => process.exit(exitCode), 2500).unref();
 }
 
-function defaultConfig() {
-  return { ...DEFAULTS };
-}
-
-function normalizeConfig(rawConfig = {}) {
-  return {
-    ...defaultConfig(),
-    ...rawConfig,
-    sourceRoot: expandHome(rawConfig.sourceRoot || DEFAULTS.sourceRoot),
-    outRoot: expandHome(rawConfig.outRoot || DEFAULTS.outRoot),
-    tune: String(rawConfig.tune || DEFAULTS.tune),
-    preset: String(rawConfig.preset || DEFAULTS.preset),
-    mbPerMin: clampNonNegative(rawConfig.mbPerMin, DEFAULTS.mbPerMin),
-    mbStep: clampNonNegative(rawConfig.mbStep, DEFAULTS.mbStep),
-    audioKbit: clampNonNegative(rawConfig.audioKbit, DEFAULTS.audioKbit),
-    minVideoKbit: clampNonNegative(rawConfig.minVideoKbit, DEFAULTS.minVideoKbit),
-    overheadPct: clampNonNegative(rawConfig.overheadPct, DEFAULTS.overheadPct),
-    ffmpegLoglevel: String(rawConfig.ffmpegLoglevel || DEFAULTS.ffmpegLoglevel),
-    x264Profile: String(rawConfig.x264Profile || DEFAULTS.x264Profile),
-    x264Level: String(rawConfig.x264Level || DEFAULTS.x264Level),
-    encThreads: clampNonNegative(rawConfig.encThreads, DEFAULTS.encThreads),
-    deleteSource: rawConfig.deleteSource === true,
-  };
-}
-
 function getPersistedConfig(userId) {
   const stored = db.getUserSettings(userId, MACHINE_NAME) || {};
   return normalizeConfig(stored);
-}
-
-function normalizeAudioTrack(value, fallback = 0) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
-  return parsed;
-}
-
-function normalizeAudioTracks(value) {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map(track => ({
-      index: normalizeAudioTrack(track?.index, 0),
-      streamIndex: Number.isFinite(Number(track?.streamIndex)) ? Number(track.streamIndex) : null,
-      language: String(track?.language || '').trim(),
-      codec: String(track?.codec || '').trim(),
-      channels: Number.isFinite(Number(track?.channels)) ? Number(track.channels) : null,
-      title: String(track?.title || '').trim(),
-    }))
-    .filter((track, index, tracks) => tracks.findIndex(candidate => candidate.index === track.index) === index)
-    .sort((a, b) => a.index - b.index);
-}
-
-function normalizeLanguageCode(value) {
-  const raw = String(value || '').trim().toLowerCase();
-  if (!raw) return '';
-  const compact = raw.replace(/[^a-z]/g, '');
-  const aliases = {
-    en: 'eng',
-    eng: 'eng',
-    english: 'eng',
-    ja: 'jpn',
-    jp: 'jpn',
-    jpn: 'jpn',
-    japanese: 'jpn',
-    bg: 'bul',
-    bgm: 'bul',
-    bul: 'bul',
-    bulgarian: 'bul',
-  };
-  return aliases[compact] || compact.slice(0, 3);
-}
-
-function resolveAudioTrackByLanguage(item, requestedLanguage) {
-  const language = normalizeLanguageCode(requestedLanguage);
-  if (!language) return normalizeAudioTrack(item?.audioTrack, 0);
-  const tracks = normalizeAudioTracks(item?.audioTracks);
-  const match = tracks.find(track => normalizeLanguageCode(track.language) === language)
-    || tracks.find(track => normalizeLanguageCode(track.title).includes(language));
-  return match ? normalizeAudioTrack(match.index, 0) : 0;
-}
-
-function serializeQueuePlanItems(queue = []) {
-  return (queue || [])
-    .filter(item => item && item.fullPath)
-    .filter(item => fs.existsSync(item.fullPath))
-    .filter(item => !['encoded', 'skipped'].includes(item.status))
-    .map(item => ({
-      fullPath: expandHome(item.fullPath),
-      tune: String(item.tune || DEFAULTS.tune),
-      saveTo: expandHome(item.saveTo || path.dirname(item.fullPath)),
-      audioTrack: normalizeAudioTrack(item.audioTrack, 0),
-      audioTracks: normalizeAudioTracks(item.audioTracks),
-      deleteSource: item.deleteSource === true,
-      status: item.status === 'failed' ? 'failed' : 'pending',
-    }));
 }
 
 function saveQueuePlan(userId, config, queue = state.queue) {
@@ -302,30 +246,6 @@ function hydrateIdleStateForUser(userId, config = getPersistedConfig(userId)) {
   }
   syncGlobalDeleteSource(userId, config.deleteSource);
   computeDerivedTotals();
-}
-
-function mergePersistedQueuePlan(files, persistedQueue, config) {
-  const discoveredPaths = files.map(filePath => expandHome(filePath));
-  const discoveredSet = new Set(discoveredPaths);
-  const persistedItems = (persistedQueue || []).map(item => ({
-    ...item,
-    fullPath: expandHome(item.fullPath),
-  }));
-  const persistedMap = new Map(persistedItems.map(item => [item.fullPath, item]));
-
-  const ordered = [];
-
-  for (const item of persistedItems) {
-    if (!discoveredSet.has(item.fullPath)) continue;
-    ordered.push(createQueueItem(item.fullPath, ordered.length + 1, config, item));
-  }
-
-  for (const fullPath of discoveredPaths) {
-    if (persistedMap.has(fullPath)) continue;
-    ordered.push(createQueueItem(fullPath, ordered.length + 1, config, {}));
-  }
-
-  return ordered;
 }
 
 function runtimeStats() {
@@ -693,33 +613,6 @@ function floorInt(value, fallback = 0) {
   return Number.isFinite(num) ? Math.floor(num) : fallback;
 }
 
-function clampNonNegative(value, fallback = 0) {
-  const num = Number(value);
-  return Number.isFinite(num) && num >= 0 ? num : fallback;
-}
-
-function ceilDiv(n, d) {
-  return Math.floor((n + d - 1) / d);
-}
-
-function computeTargetSizeMb(durationSeconds, config) {
-  const mbPerMin = clampNonNegative(config?.mbPerMin, DEFAULTS.mbPerMin);
-  const mbStep = Math.max(1, clampNonNegative(config?.mbStep, DEFAULTS.mbStep));
-  const rawTargetMb = (Math.max(0, Number(durationSeconds) || 0) / 60) * mbPerMin;
-  const steps = Math.max(1, ceilDiv(Math.ceil(rawTargetMb * 1000), mbStep * 1000));
-  return steps * mbStep;
-}
-
-function computeVideoKbps(sizeMb, durationSeconds, config) {
-  const totalBits = sizeMb * 1000000 * 8;
-  const avgTotalBps = Math.floor(totalBits / durationSeconds);
-  const audioBps = clampNonNegative(config.audioKbit, 192) * 1000;
-  let videoBps = avgTotalBps - audioBps;
-  videoBps = Math.floor(videoBps * (100 - clampNonNegative(config.overheadPct, 1)) / 100);
-  const kbps = Math.floor(videoBps / 1000);
-  return Math.max(kbps, clampNonNegative(config.minVideoKbit, 300));
-}
-
 function clampFraction(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -828,22 +721,6 @@ function formatSizeBytes(bytes) {
   return `${(value / MB).toFixed(1)} MB`;
 }
 
-function createQueueItem(filePath, index, config, overrides = {}) {
-  const fullPath = expandHome(overrides.fullPath || filePath);
-  return {
-    index,
-    name: path.basename(fullPath),
-    path: path.dirname(fullPath),
-    fullPath,
-    status: overrides.status || 'pending',
-    tune: String(overrides.tune || config.tune || DEFAULTS.tune),
-    saveTo: expandHome(overrides.saveTo || path.dirname(fullPath)),
-    audioTrack: normalizeAudioTrack(overrides.audioTrack, 0),
-    audioTracks: normalizeAudioTracks(overrides.audioTracks),
-    deleteSource: resolveDeleteSource(overrides, config),
-  };
-}
-
 function summarizeQueue(files, config = state.config) {
   state.queue = files.map((filePath, index) => createQueueItem(filePath, index + 1, config));
   state.queueInfo = { total: state.queue.length, visible: Math.min(state.queue.length, QUEUE_PREVIEW_LIMIT), hidden: Math.max(0, state.queue.length - QUEUE_PREVIEW_LIMIT) };
@@ -852,102 +729,6 @@ function summarizeQueue(files, config = state.config) {
 function loadQueueItems(items, config = state.config) {
   state.queue = (items || []).map((item, index) => createQueueItem(item.fullPath, index + 1, config, item));
   state.queueInfo = { total: state.queue.length, visible: Math.min(state.queue.length, QUEUE_PREVIEW_LIMIT), hidden: Math.max(0, state.queue.length - QUEUE_PREVIEW_LIMIT) };
-}
-
-async function walkFiles(dir, onFile = null) {
-  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  const results = [];
-  for (const entry of entries) {
-    const entryPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...await walkFiles(entryPath, onFile));
-    } else if (entry.isFile()
-      && VIDEO_EXTS.has(path.extname(entry.name).toLowerCase())
-      && !isPreservedSourceOutput(entry.name)) {
-      results.push(entryPath);
-      onFile?.(entryPath);
-    }
-  }
-  return results;
-}
-
-function statSize(filePath) {
-  try {
-    return fs.statSync(filePath).size;
-  } catch {
-    return 0;
-  }
-}
-
-function execFileJson(cmd, args) {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout));
-      } catch (parseError) {
-        reject(parseError);
-      }
-    });
-  });
-}
-
-async function probeMedia(filePath) {
-  const data = await execFileJson('ffprobe', [
-    '-v', 'error',
-    '-print_format', 'json',
-    '-show_format',
-    '-show_streams',
-    '--',
-    filePath,
-  ]);
-  const durationFloat = Number(data.format?.duration || 0);
-  const durationSeconds = Number.isFinite(durationFloat) ? Math.max(0, Math.round(durationFloat)) : 0;
-  const videoStream = (data.streams || []).find(stream => stream.codec_type === 'video') || {};
-  const audioTracks = (data.streams || [])
-    .filter(stream => stream.codec_type === 'audio')
-    .map((stream, index) => ({
-      index,
-      streamIndex: Number.isFinite(Number(stream.index)) ? Number(stream.index) : null,
-      language: String(stream.tags?.language || '').trim(),
-      codec: String(stream.codec_name || stream.codec_long_name || '').trim(),
-      channels: Number.isFinite(Number(stream.channels)) ? Number(stream.channels) : null,
-      title: String(stream.tags?.title || '').trim(),
-    }));
-  let totalFrames = Number(videoStream.nb_frames || 0);
-  if (!Number.isFinite(totalFrames) || totalFrames <= 0) {
-    const rate = String(videoStream.avg_frame_rate || '0/1').split('/').map(Number);
-    if (rate.length === 2 && rate[1] > 0 && durationFloat > 0) {
-      totalFrames = Math.round((rate[0] / rate[1]) * durationFloat);
-    } else {
-      totalFrames = null;
-    }
-  }
-  return { durationSeconds, totalFrames, audioTracks };
-}
-
-async function enrichQueueAudioTracks(items, concurrency = 4, onProgress = null) {
-  const queue = [...(items || [])];
-  async function worker() {
-    while (queue.length) {
-      const item = queue.shift();
-      if (!item) continue;
-      if (!normalizeAudioTracks(item.audioTracks).length) {
-        try {
-          const probe = await probeMedia(item.fullPath);
-          item.audioTracks = normalizeAudioTracks(probe.audioTracks);
-        } catch {
-          item.audioTracks = [];
-        }
-      }
-      onProgress?.(item);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, () => worker()));
-  return items;
 }
 
 function updateQueueItem(filePath, status, extra = null) {
@@ -2329,119 +2110,42 @@ async function handleEvents(req, res) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+const dispatchRequest = createHttpRouter({
+  authorizeLocalAdmin,
+  send,
+  serveFile,
+  handlers: {
+    activeQueueOrder: handleActiveQueueOrder,
+    adminCreateUser: handleAdminCreateUser,
+    adminDeleteUser: handleAdminDeleteUser,
+    adminSetPassword: handleAdminSetPassword,
+    adminSettings: handleAdminSettings,
+    adminState: handleAdminState,
+    adminVersion: handleAdminVersion,
+    events: handleEvents,
+    login: handleLogin,
+    logout: handleLogout,
+    me: handleMe,
+    pathSuggest: handlePathSuggest,
+    pauseToggle: handlePauseToggle,
+    queue: handleQueue,
+    queueAppend: handleQueueAppend,
+    queueDeleteSource: handleQueueDeleteSource,
+    queueInspect: handleQueueInspect,
+    register: handleRegister,
+    scan: handleScan,
+    start: handleStart,
+    state: handleState,
+    stop: handleStop,
+    stopAfterCurrent: handleStopAfterCurrent,
+    vacuum: handleVacuum,
+  },
+});
 
+const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === 'GET' && url.pathname === '/admin') {
-      if (!authorizeLocalAdmin(req, res)) return;
-      serveFile(req, res, '/admin');
-      return;
-    }
-    if (req.method === 'GET' && url.pathname === '/api/admin/state') {
-      await handleAdminState(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/admin/users') {
-      await handleAdminCreateUser(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/admin/users/password') {
-      await handleAdminSetPassword(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/admin/users/delete') {
-      await handleAdminDeleteUser(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/admin/version') {
-      await handleAdminVersion(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/admin/settings') {
-      await handleAdminSettings(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/register') {
-      await handleRegister(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/login') {
-      await handleLogin(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/logout') {
-      handleLogout(req, res);
-      return;
-    }
-    if (req.method === 'GET' && url.pathname === '/api/me') {
-      await handleMe(req, res);
-      return;
-    }
-    if (req.method === 'GET' && url.pathname === '/api/state') {
-      await handleState(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/scan') {
-      await handleScan(req, res);
-      return;
-    }
-    if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/queue') {
-      await handleQueue(req, res, url);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/queue/delete-source') {
-      await handleQueueDeleteSource(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/queue/append') {
-      await handleQueueAppend(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/queue/inspect') {
-      await handleQueueInspect(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/queue/reorder-active') {
-      await handleActiveQueueOrder(req, res);
-      return;
-    }
-    if (req.method === 'GET' && url.pathname === '/api/path-suggest') {
-      await handlePathSuggest(req, res, url);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/vacuum') {
-      await handleVacuum(req, res);
-      return;
-    }
-    if (req.method === 'GET' && url.pathname === '/api/events') {
-      await handleEvents(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/start') {
-      await handleStart(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/stop') {
-      await handleStop(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/pause-toggle') {
-      await handlePauseToggle(req, res);
-      return;
-    }
-    if (req.method === 'POST' && url.pathname === '/api/stop-after-current') {
-      await handleStopAfterCurrent(req, res);
-      return;
-    }
-    if (req.method === 'GET') {
-      if (url.pathname === '/admin.html') {
-        if (!authorizeLocalAdmin(req, res)) return;
-      }
-      serveFile(req, res, decodeURIComponent(url.pathname));
-      return;
-    }
-    send(res, 404, { error: 'Not found' });
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    await dispatchRequest(req, res, url);
   } catch (error) {
     console.error(error);
     send(res, 500, { error: error.message || 'Server error' });

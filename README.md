@@ -130,11 +130,23 @@ It can create and remove users, reset passwords, update the displayed app versio
 ## Project Structure
 
 ```text
-server.js          HTTP server, API, queue runner, FFmpeg orchestration
-server/db.js       SQLite schema, authentication, settings, and statistics
-public/            Main and admin browser interfaces
-docs/USER-GUIDE.md Detailed operator guide
-docs/TECH.md       Architecture, API, and persistence documentation
+server.js                 Runtime composition, API handlers, queue runner, and FFmpeg orchestration
+server/db.js              SQLite schema, authentication, settings, and statistics
+server/http-router.js     HTTP route dispatch and admin/static-file gates
+server/queue-model.js     Queue/config normalization and audio-language selection
+server/media-probe.js     File discovery, sizing, and FFprobe audio metadata
+server/encoding-math.js   Target-size and bitrate calculations
+public/js/app.js          Main browser state, API/SSE lifecycle, and queue interactions
+public/js/*.js            Focused browser view, formatting, autocomplete, and queue modules
+test/                     Node built-in test suite for server-side behavior
+docs/USER-GUIDE.md        Detailed operator guide
+docs/TECH.md              Architecture, API, and persistence documentation
+```
+
+Run the automated checks with:
+
+```bash
+npm test
 ```
 
 ## Documentation
