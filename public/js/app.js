@@ -590,7 +590,9 @@ function render(state, options = {}) {
   els.speedSub.textContent = state.totals?.averageBitrateKbps == null ? 'average bitrate: N/A' : `average bitrate: ${Number(state.totals.averageBitrateKbps).toFixed(1)} kbps`;
 
   els.etaStat.textContent = state.progress?.remainingSeconds == null ? 'N/A' : formatHms(state.progress.remainingSeconds);
-  els.etaSub.textContent = state.progress?.etaIso ? `finish time: ${formatDate(state.progress.etaIso)}` : 'need 1 completed encode';
+  els.etaSub.textContent = state.progress?.etaIso
+    ? `finish time: ${formatDate(state.progress.etaIso)}`
+    : (state.active ? 'measuring live progress' : 'N/A');
 
   const overall = Number(state.progress?.overallPct || 0);
   els.overallProgressLabel.textContent = `${overall.toFixed(2)}%`;

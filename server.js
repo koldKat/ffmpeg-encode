@@ -21,6 +21,7 @@ const { createQueueModel } = require('./server/queue-model');
 const { createMediaProbe } = require('./server/media-probe');
 const { createEncodingMath } = require('./server/encoding-math');
 const { createHttpRouter } = require('./server/http-router');
+const { blendEtaSeconds, createLiveProgressEta } = require('./server/progress-eta');
 
 const PORT = Number(process.env.PORT || 3017);
 const REMOTE_USERNAME = 'koldKat';
@@ -104,6 +105,7 @@ let shutdownInProgress = false;
 let lastBatchSummary = null;
 let lastCpuSample = null;
 let lastCpuUsagePct = null;
+const liveProgressEta = createLiveProgressEta();
 const PROC_CLK_TCK = Number(process.env.CLK_TCK || 100);
 
 function stopActiveChild(signal = 'SIGINT') {
@@ -433,6 +435,7 @@ function clonePublicState(configOverride = null) {
 
 function resetState(config) {
   state = createState();
+  liveProgressEta.reset();
   state.config = { ...defaultConfig(), ...config };
   state.lifetime = db.getLifetimeStats();
 }
@@ -683,11 +686,18 @@ function computeDerivedTotals() {
   state.progress.overallPct = state.counts.total > 0
     ? (effectiveCompleted / state.counts.total) * 100
     : 0;
+  const isLiveEncoding = state.active && state.currentFile?.phase === 'encoding';
+  if (!isLiveEncoding) liveProgressEta.pause();
+  const liveEtaSeconds = isLiveEncoding ? liveProgressEta.observe(state.progress.overallPct) : null;
   const currentIndex = Number(state.currentFile?.index || 0);
   const currentTotal = Number(state.currentFile?.total || state.counts.total || 0);
   const isFinalFilePhase = state.active && currentTotal > 0 && currentIndex >= currentTotal;
   if (isFinalFilePhase) {
-    const etaSeconds = estimateCurrentFileRemainingSeconds(state.currentFile);
+    const passMatch = String(state.currentFile?.passLabel || '').match(/^(\d+)\/(\d+)$/);
+    const onlyFileStillOnFirstPass = currentTotal === 1
+      && passMatch
+      && Number(passMatch[1]) < Number(passMatch[2]);
+    const etaSeconds = onlyFileStillOnFirstPass ? null : estimateCurrentFileRemainingSeconds(state.currentFile);
     if (etaSeconds != null) {
       state.progress.remainingSeconds = etaSeconds;
       state.progress.etaIso = new Date(Date.now() + etaSeconds * 1000).toISOString();
@@ -698,9 +708,13 @@ function computeDerivedTotals() {
   } else if (state.counts.encoded > 0 && state.active) {
     const avgPerFile = state.totals.encodeSeconds / state.counts.encoded;
     const remaining = Math.max(0, state.counts.total - effectiveCompleted);
-    const etaSeconds = Math.max(0, Math.round(avgPerFile * remaining));
+    const completedFileEtaSeconds = Math.max(0, Math.round(avgPerFile * remaining));
+    const etaSeconds = blendEtaSeconds(liveEtaSeconds, completedFileEtaSeconds, state.counts.encoded);
     state.progress.remainingSeconds = etaSeconds;
     state.progress.etaIso = new Date(Date.now() + etaSeconds * 1000).toISOString();
+  } else if (liveEtaSeconds != null && state.active) {
+    state.progress.remainingSeconds = liveEtaSeconds;
+    state.progress.etaIso = new Date(Date.now() + liveEtaSeconds * 1000).toISOString();
   } else if (!state.active) {
     state.progress.remainingSeconds = 0;
     state.progress.etaIso = new Date().toISOString();
@@ -907,6 +921,16 @@ function runFfmpegPass(pass, context) {
   return new Promise((resolve, reject) => {
     const { inputPath, stagePath, vbKbps, config, passlog, audioTrack } = context;
     state.currentFile.passLabel = `${pass}/2`;
+    // Pass one ends at a full duration. Clear it before announcing pass two so
+    // overall progress stays continuous instead of briefly jumping ahead.
+    if (pass > 1) {
+      state.currentFile.outputSeconds = 0;
+      state.currentFile.fileProgressPct = 0;
+      state.currentFile.fileRemainingSeconds = null;
+      state.currentFile.finishTimeIso = null;
+    }
+    liveProgressEta.pause();
+    computeDerivedTotals();
     publish();
 
     const args = buildFfmpegArgs({ inputPath, stagePath, vbKbps, config, pass, passlog, audioTrack });

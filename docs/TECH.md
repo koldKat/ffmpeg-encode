@@ -14,6 +14,7 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | `server/queue-model.js` | Configuration normalization, audio-language resolution, queue-item construction, persisted-plan serialization, and saved-order merge |
 | `server/media-probe.js` | Supported-file traversal, file sizing, FFprobe JSON parsing, and bounded-concurrency audio probing |
 | `server/encoding-math.js` | Target-size rounding and video-bitrate calculation |
+| `server/progress-eta.js` | Live overall-progress rate sampling and completed-file ETA blending |
 | `server/queue-append.js` | Active-run path containment, recursive supported-file discovery, and duplicate filtering |
 | `server/queue-inspections.js` | Short-lived, user-scoped, single-use storage for probed append candidates |
 | `server/active-queue-order.js` | Validates and applies active pending-prefix reorder operations without moving the current encode |
@@ -304,9 +305,10 @@ The move phase adds no overall fraction, preventing copy progress from inflating
 
 ETA rules:
 
-- Before a successful encode provides timing history, non-final batch ETA is unavailable.
-- Non-final ETA uses average encode seconds per successful file times remaining effective files.
+- During encoding, the server samples overall-percent gain over active FFmpeg wall time. Once it has at least 20 seconds and 0.002 percentage points of forward progress, it produces a provisional live ETA, including before the first file completes. A falling percentage caused by appending work resets that sample.
+- Non-final ETA blends the live-progress estimate with average encode seconds per successful file times remaining effective files. Completed-file timing gains weight as more files finish, but live progress remains part of the estimate.
 - Final-file ETA uses live current-pass remaining time plus estimated remaining passes.
+- A one-file batch intentionally remains `N/A` during pass 1, because no completed-pass timing exists yet; pass 2 uses its live file ETA.
 - Idle raw state uses zero remaining time; retained summary data may overlay it.
 
 Speed is media duration divided by encode wall time. Average bitrate is output bits divided by encoded media duration.
