@@ -5,8 +5,10 @@ import { createPathAutocomplete } from './path-autocomplete.js';
 import { createCurrentFileView } from './current-file-view.js';
 import { createActivityView } from './activity-view.js';
 
-const TOKEN_KEY = 'ffmpeg_webapp_token';
-const FOOTER_START_YEAR = 2026;
+const CLIENT_CONFIG = globalThis.FFMPEG_WEBAPP_CLIENT_CONFIG;
+
+const TOKEN_KEY = CLIENT_CONFIG.sessionStorageKey;
+const FOOTER_START_YEAR = CLIENT_CONFIG.footerStartYear;
 
 const els = {
   sessionScreen: document.getElementById('session-screen'),
@@ -21,6 +23,8 @@ const els = {
   blockedLogoutBtn: document.getElementById('blocked-logout-btn'),
   logoutBtn: document.getElementById('logout-btn'),
   appEyebrow: document.getElementById('app-eyebrow'),
+  appTitles: document.querySelectorAll('[data-app-name]'),
+  blockedUsername: document.getElementById('blocked-username'),
   machineChip: document.getElementById('machine-chip'),
   viewerChip: document.getElementById('viewer-chip'),
   sourceRoot: document.getElementById('source-root'),
@@ -93,6 +97,7 @@ const els = {
   recentList: document.getElementById('recent-list'),
   logList: document.getElementById('log-list'),
   footerCopy: document.getElementById('app-footer-copy'),
+  footerBrand: document.getElementById('app-footer-brand'),
 };
 
 const currentFileView = createCurrentFileView({ els, escapeHtml, formatDate, formatHms, formatPct, formatSize });
@@ -110,12 +115,12 @@ let fullQueue = [];
 let activeQueue = [];
 let activeQueueFetchInFlight = false;
 let queueScanInFlight = false;
-let editableQueueVisibleCount = 50;
+let editableQueueVisibleCount = CLIENT_CONFIG.queue.initialVisibleItems;
 let queuePagingGestureConsumed = false;
 let queuePagingIntent = false;
 let queuePagingGestureTimer = null;
-let recentVisibleCount = 50;
-let logVisibleCount = 50;
+let recentVisibleCount = CLIENT_CONFIG.queue.initialVisibleItems;
+let logVisibleCount = CLIENT_CONFIG.queue.initialVisibleItems;
 let pagedListsStartedAt = null;
 let selectedTargets = new Set();
 let lastState = null;
@@ -124,9 +129,9 @@ let lastQueueRenderKey = '';
 let dragState = null;
 let activeQueueAdder = null;
 let deleteSourceUpdateQueue = Promise.resolve();
-const QUEUE_DRAG_SCROLL_EDGE = 72;
-const QUEUE_DRAG_SCROLL_STEP = 28;
-const LIST_PAGE_SIZE = 50;
+const QUEUE_DRAG_SCROLL_EDGE = CLIENT_CONFIG.queue.dragScrollEdgePx;
+const QUEUE_DRAG_SCROLL_STEP = CLIENT_CONFIG.queue.dragScrollStepPx;
+const LIST_PAGE_SIZE = CLIENT_CONFIG.queue.pageSize;
 const ACTIVE_QUEUE_PAGE_SIZE = LIST_PAGE_SIZE;
 
 function getToken() {
@@ -139,6 +144,10 @@ function setToken(token) {
 
 function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+function setAuthorizedUsername(username) {
+  if (els.blockedUsername) els.blockedUsername.textContent = username || 'the authorized user';
 }
 
 function showScreen(name) {
@@ -526,7 +535,7 @@ function sanitizeHeroMessage(message) {
 }
 
 function updateDocumentTitle(state) {
-  const baseTitle = 'FFmpeg Batch Encode';
+  const baseTitle = state?.app?.name || 'FFmpeg Batch Encode';
   if (!state) {
     document.title = baseTitle;
     return;
@@ -561,8 +570,14 @@ function render(state, options = {}) {
   updateDocumentTitle(state);
   const machineName = state.app?.machineName || '';
   const cpuCount = Number(state.app?.cpuCount || 0);
+  const appName = state.app?.name || 'FFmpeg Batch Encode';
+  const dashboardLabel = state.app?.dashboardLabel || 'Client + Server Encode Dashboard';
+  const authorizedUsername = state.app?.remoteUsername || '';
+  els.appTitles.forEach(title => { title.textContent = appName; });
+  if (els.blockedUsername) els.blockedUsername.textContent = authorizedUsername;
+  if (els.footerBrand) els.footerBrand.textContent = state.app?.footerBrand || '';
   if (els.appEyebrow) {
-    els.appEyebrow.textContent = `Client + Server Encode Dashboard - ${state.app?.version || 'N/A'}`;
+    els.appEyebrow.textContent = `${dashboardLabel} - ${state.app?.version || 'N/A'}`;
   }
   els.machineChip.textContent = machineName;
   els.machineChip.style.display = machineName ? 'inline-flex' : 'none';
@@ -714,7 +729,7 @@ async function apiFetch(url, options = {}) {
   return data;
 }
 
-const { wire: wirePathAutocomplete } = createPathAutocomplete({ apiFetch, escapeHtml });
+const { wire: wirePathAutocomplete } = createPathAutocomplete({ apiFetch, escapeHtml, timing: CLIENT_CONFIG.pathAutocomplete });
 
 function closeEvents() {
   if (eventSource) {
@@ -765,13 +780,13 @@ function beginQueuePagingGesture() {
   queuePagingGestureTimer = setTimeout(() => {
     queuePagingGestureConsumed = false;
     queuePagingIntent = false;
-  }, 350);
+  }, CLIENT_CONFIG.queue.bottomScrollDelayMs);
 }
 
 function loadQueuePageAtScrollEnd() {
   if (!queuePagingIntent || queuePagingGestureConsumed) return;
   const remaining = els.queueList.scrollHeight - els.queueList.scrollTop - els.queueList.clientHeight;
-  if (remaining >= 120) return;
+  if (remaining >= CLIENT_CONFIG.queue.bottomScrollThresholdPx) return;
   queuePagingGestureConsumed = true;
   queuePagingIntent = false;
   if (lastState?.active) {
@@ -794,13 +809,13 @@ function wirePagedList(listEl, hasMore, showNext) {
     gestureTimer = setTimeout(() => {
       gestureConsumed = false;
       pagingIntent = false;
-    }, 350);
+    }, CLIENT_CONFIG.queue.bottomScrollDelayMs);
   };
 
   const loadAtBottom = () => {
     if (!pagingIntent || gestureConsumed || !hasMore()) return;
     const remaining = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
-    if (remaining >= 120) return;
+    if (remaining >= CLIENT_CONFIG.queue.bottomScrollThresholdPx) return;
     gestureConsumed = true;
     pagingIntent = false;
     showNext();
@@ -866,6 +881,7 @@ async function handleAuth(endpoint) {
     });
     setToken(data.token);
     viewer = { username: data.username, canUseApp: data.canUseApp };
+    setAuthorizedUsername(data.allowedUsername);
     if (!data.canUseApp) {
       showScreen('blocked');
       return;
@@ -893,6 +909,7 @@ async function logout() {
 async function hydrateApp() {
   const me = await apiFetch('/api/me');
   viewer = { username: me.username, canUseApp: me.canUseApp };
+  setAuthorizedUsername(me.allowedUsername);
   if (!me.canUseApp) {
     showScreen('blocked');
     return;
@@ -1203,7 +1220,7 @@ els.queueList.addEventListener('drop', async event => {
   } catch (error) {
     els.formError.textContent = error.message;
     if (active) {
-      const data = await apiFetch('/api/queue?offset=0&limit=200').catch(() => null);
+      const data = await apiFetch(`/api/queue?offset=0&limit=${CLIENT_CONFIG.queue.fetchLimit}`).catch(() => null);
       if (data) {
         resetActiveQueue(data.queue || []);
         if (data.state) render(data.state, { forceQueue: true });

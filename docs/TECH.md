@@ -9,6 +9,7 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | Component | Responsibility |
 | --- | --- |
 | `server.js` | Application composition root: global run state, queue orchestration, FFmpeg execution, progress, file promotion, SSE, and route-handler wiring |
+| `server/app-config.js` | Deployment identity/access, encoding defaults, limits, media policy, and operational timings |
 | `server/db.js` | SQLite schema, migrations, users, sessions, settings, queue plans, run snapshots, metadata, and lifetime aggregates |
 | `server/http-router.js` | Declarative HTTP route table, admin static-file gate, and static/API dispatch |
 | `server/queue-model.js` | Configuration normalization, audio-language resolution, queue-item construction, persisted-plan serialization, and saved-order merge |
@@ -21,6 +22,7 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | `server/app-version.js` | Reads the boot seed and atomically mirrors manually saved app versions to `VERSION` |
 | `server/static.js` | Traversal-safe static files, MIME types, no-cache revalidation, and content ETags |
 | `public/js/app.js` | Browser composition root: application state, SSE lifecycle, API actions, queue interactions, and feature wiring |
+| `public/js/app-config.js` | Browser paging, interaction timing, storage key, and presentation constants |
 | `public/js/active-queue-add.js` | Active-run queue append form, request state, and user feedback |
 | `public/js/queue-units.js` | Shared root-file/directory grouping and mixed-value summaries for both queue editors |
 | `public/js/path-autocomplete.js` | Reusable asynchronous path suggestions and keyboard navigation |
@@ -33,6 +35,12 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | `public/css/style.css` | Shared responsive presentation |
 
 There is no application framework, build step, worker queue, or external API service.
+
+## Application Configuration
+
+`server/app-config.js` is the single place to change server-side identity, the authorized username, encoding defaults, queue/probe limits, media behavior, session lifetime, and timing thresholds. `PORT`, `CLK_TCK`, and `FFMPEG_WEBAPP_USERNAME` are optional environment overrides for deployment-specific values.
+
+`public/js/app-config.js` is a small bootstrap script that holds browser-only interaction values such as paging, drag scrolling, autocomplete delays, admin polling, the session-storage key, and footer year. It loads before the main client so the pre-render session check and the application share the same storage key. It intentionally remains separate because the browser has no build step and should not receive server-only policy values.
 
 ## Module Boundaries
 
@@ -214,7 +222,7 @@ Authorization: Bearer <token>
 
 SSE uses `?token=<token>` because browser `EventSource` cannot set that header. Tokens can therefore appear in proxy access logs.
 
-`authorizeApp()` permits only the exact `REMOTE_USERNAME`, currently `koldKat`. Other accounts may authenticate but receive `403` from app routes.
+`authorizeApp()` permits only the exact configured authorized username. `FFMPEG_WEBAPP_USERNAME` overrides `access.authorizedUsername` from `server/app-config.js` at startup. Other accounts may authenticate but receive `403` from app routes.
 
 ### Local admin boundary
 

@@ -22,9 +22,10 @@ const { createMediaProbe } = require('./server/media-probe');
 const { createEncodingMath } = require('./server/encoding-math');
 const { createHttpRouter } = require('./server/http-router');
 const { blendEtaSeconds, createLiveProgressEta } = require('./server/progress-eta');
+const { APP_CONFIG } = require('./server/app-config');
 
-const PORT = Number(process.env.PORT || 3017);
-const REMOTE_USERNAME = 'koldKat';
+const PORT = APP_CONFIG.runtime.port;
+const REMOTE_USERNAME = APP_CONFIG.access.authorizedUsername;
 const serveFile = createStaticFileServer({
   root: path.join(__dirname, 'public'),
   mimeTypes: {
@@ -37,29 +38,14 @@ const serveFile = createStaticFileServer({
   '.svg': 'image/svg+xml',
   },
 });
-const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.mpeg', '.mpg', '.m4v']);
+const VIDEO_EXTS = new Set(APP_CONFIG.media.videoExtensions);
 const SSE_CLIENTS = new Set();
-const QUEUE_PREVIEW_LIMIT = 50;
+const QUEUE_PREVIEW_LIMIT = APP_CONFIG.queue.previewLimit;
 const MACHINE_NAME = os.hostname();
-const MAX_EVENT_MESSAGE_LENGTH = 420;
+const MAX_EVENT_MESSAGE_LENGTH = APP_CONFIG.limits.eventMessageLength;
 const queueInspections = new QueueInspectionStore();
 
-const DEFAULTS = {
-  sourceRoot: '.',
-  outRoot: '~/Videos',
-  tune: 'film',
-  preset: 'slow',
-  mbPerMin: 10,
-  mbStep: 50,
-  audioKbit: 192,
-  minVideoKbit: 300,
-  overheadPct: 1,
-  ffmpegLoglevel: 'error',
-  x264Profile: 'high',
-  x264Level: '4.1',
-  encThreads: 0,
-  deleteSource: false,
-};
+const DEFAULTS = APP_CONFIG.encodingDefaults;
 
 const queueModel = createQueueModel({
   defaults: DEFAULTS,
@@ -86,6 +72,8 @@ const { enrichQueueAudioTracks, probeMedia, statSize, walkFiles } = createMediaP
   videoExtensions: VIDEO_EXTS,
   isPreservedSourceOutput,
   normalizeAudioTracks,
+  ffprobeMaxBufferBytes: APP_CONFIG.media.ffprobeMaxBufferBytes,
+  defaultConcurrency: APP_CONFIG.queue.audioProbeConcurrency,
 });
 const { computeTargetSizeMb, computeVideoKbps } = createEncodingMath({
   defaults: DEFAULTS,
@@ -105,8 +93,8 @@ let shutdownInProgress = false;
 let lastBatchSummary = null;
 let lastCpuSample = null;
 let lastCpuUsagePct = null;
-const liveProgressEta = createLiveProgressEta();
-const PROC_CLK_TCK = Number(process.env.CLK_TCK || 100);
+const liveProgressEta = createLiveProgressEta(APP_CONFIG.eta);
+const PROC_CLK_TCK = APP_CONFIG.runtime.processClockTicks;
 
 function stopActiveChild(signal = 'SIGINT') {
   if (!currentChild) return false;
@@ -132,7 +120,7 @@ function forceStopActiveChild() {
   stopActiveChild('SIGINT');
   setTimeout(() => {
     if (currentChild) stopActiveChild('SIGKILL');
-  }, 1500).unref();
+  }, APP_CONFIG.timing.forceKillDelayMs).unref();
 }
 
 function shutdownServer(exitCode = 0) {
@@ -148,7 +136,7 @@ function shutdownServer(exitCode = 0) {
   server.close(() => {
     process.exit(exitCode);
   });
-  setTimeout(() => process.exit(exitCode), 2500).unref();
+  setTimeout(() => process.exit(exitCode), APP_CONFIG.timing.shutdownForceExitDelayMs).unref();
 }
 
 function getPersistedConfig(userId) {
@@ -258,7 +246,7 @@ function runtimeStats() {
   const cpuTotalMicros = nodeCpuMicros + childCpuMicros;
   const nowMicros = Number(process.hrtime.bigint() / 1000n);
   const elapsedMicros = lastCpuSample ? nowMicros - lastCpuSample.atMicros : 0;
-  if (lastCpuSample && elapsedMicros >= 250000) {
+  if (lastCpuSample && elapsedMicros >= APP_CONFIG.timing.cpuSampleIntervalMs * 1000) {
     const cpuDeltaMicros = Math.max(0, cpuTotalMicros - lastCpuSample.totalMicros);
     const cpuCapacity = Math.max(1, os.cpus().length);
     lastCpuUsagePct = Math.min(100, (cpuDeltaMicros / (elapsedMicros * cpuCapacity)) * 100);
@@ -285,7 +273,9 @@ function createState() {
   const runtime = runtimeStats();
   return {
     app: {
-      name: 'FFmpeg Batch Encode',
+      name: APP_CONFIG.identity.name,
+      dashboardLabel: APP_CONFIG.identity.dashboardLabel,
+      footerBrand: APP_CONFIG.identity.footerBrand,
       version: db.getAppVersion('N/A'),
       remoteUsername: REMOTE_USERNAME,
       machineName: MACHINE_NAME,
@@ -943,15 +933,15 @@ function runFfmpegPass(pass, context) {
     child.stdout.on('data', chunk => {
       stdoutBuffer += chunk.toString();
       parseProgressChunk(stdoutBuffer, state.currentFile);
-      if (stdoutBuffer.length > 16000) {
-        stdoutBuffer = stdoutBuffer.slice(-8000);
+      if (stdoutBuffer.length > APP_CONFIG.media.ffmpegStdoutBufferLimit) {
+        stdoutBuffer = stdoutBuffer.slice(-APP_CONFIG.media.ffmpegStdoutBufferRetain);
       }
     });
 
     child.stderr.on('data', chunk => {
       stderrBuffer += chunk.toString();
-      if (stderrBuffer.length > 12000) {
-        stderrBuffer = stderrBuffer.slice(-12000);
+      if (stderrBuffer.length > APP_CONFIG.media.ffmpegStderrBufferLimit) {
+        stderrBuffer = stderrBuffer.slice(-APP_CONFIG.media.ffmpegStderrBufferLimit);
       }
     });
 
@@ -1011,7 +1001,7 @@ function copyFileWithProgress(sourcePath, destPath, onProgress) {
       copiedBytes += chunk.length;
       if (onProgress) {
         const now = Date.now();
-        if ((now - lastReportedAt) >= 120) {
+        if ((now - lastReportedAt) >= APP_CONFIG.media.promotionProgressIntervalMs) {
           lastReportedAt = now;
           onProgress(copiedBytes);
         }
@@ -1476,7 +1466,7 @@ async function handleScan(req, res) {
     publish();
 
     const publishEvery = Math.max(1, Math.ceil(mergedQueue.length / 100));
-    await enrichQueueAudioTracks(mergedQueue, 4, () => {
+    await enrichQueueAudioTracks(mergedQueue, APP_CONFIG.queue.audioProbeConcurrency, () => {
       state.scan.processed += 1;
       if (state.scan.processed === mergedQueue.length || state.scan.processed % publishEvery === 0) publish();
     });
@@ -1515,7 +1505,7 @@ async function handleQueue(req, res, url = null) {
     const rawLimit = hasLimit
       ? floorInt(url.searchParams.get('limit'), QUEUE_PREVIEW_LIMIT)
       : publicQueue.length;
-    const limit = hasLimit ? Math.max(1, Math.min(200, rawLimit)) : publicQueue.length;
+    const limit = hasLimit ? Math.max(1, Math.min(APP_CONFIG.queue.apiPageLimit, rawLimit)) : publicQueue.length;
     const queue = publicQueue.slice(offset, offset + limit);
     send(res, 200, {
       queue,
@@ -1995,7 +1985,7 @@ async function handleAdminState(req, res) {
   const runtime = runtimeStats();
   send(res, 200, {
     app: {
-      name: state.app?.name || 'FFmpeg Batch Encode',
+      name: state.app?.name || APP_CONFIG.identity.name,
       version: db.getAppVersion('N/A'),
       remoteUsername: REMOTE_USERNAME,
       machineName: MACHINE_NAME,

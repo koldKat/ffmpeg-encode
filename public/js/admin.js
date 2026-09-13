@@ -1,4 +1,8 @@
+const CLIENT_CONFIG = globalThis.FFMPEG_WEBAPP_CLIENT_CONFIG;
+
 const els = {
+  appTitle: document.getElementById('admin-app-title'),
+  protectedUser: document.getElementById('admin-protected-user'),
   machineChip: document.getElementById('admin-machine-chip'),
   versionInput: document.getElementById('admin-version'),
   versionStat: document.getElementById('admin-version-stat'),
@@ -133,7 +137,12 @@ function render(state) {
   const totalSessions = users.reduce((sum, user) => sum + Number(user.sessionsCount || 0), 0);
   const machineName = state.app?.machineName || 'localhost';
   const version = state.app?.version || 'N/A';
-  const protectedUser = state.app?.remoteUsername || 'koldKat';
+  const protectedUser = state.app?.remoteUsername || 'N/A';
+  const appName = state.app?.name || 'FFmpeg Batch Encode';
+
+  document.title = `${appName} Admin`;
+  setText(els.appTitle, `${appName} Admin`);
+  setText(els.protectedUser, `${protectedUser} is protected`);
 
   setText(els.machineChip, machineName);
   if (!versionDirty && document.activeElement !== els.versionInput) {
@@ -175,7 +184,7 @@ function startStatsRefresh() {
     refresh().catch(error => {
       els.userMsg.textContent = error.message;
     });
-  }, 1000);
+  }, CLIENT_CONFIG.admin.refreshIntervalMs);
 }
 
 async function saveVersion() {

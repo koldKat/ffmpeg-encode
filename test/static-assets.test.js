@@ -59,7 +59,8 @@ test('saved sessions hide login until authentication resolves', () => {
   const css = read('public/css/style.css');
   const app = read('public/js/app.js');
 
-  assert.match(html, /localStorage\.getItem\('ffmpeg_webapp_token'\)/);
+  assert.match(html, /src="\/js\/app-config\.js"/);
+  assert.match(html, /localStorage\.getItem\(globalThis\.FFMPEG_WEBAPP_CLIENT_CONFIG\.sessionStorageKey\)/);
   assert.match(html, /id="session-screen"[^>]*role="status"/);
   assert.match(css, /\.restoring-session #login-screen\s*\{\s*display: none/);
   assert.match(app, /document\.documentElement\.classList\.remove\('restoring-session'\)/);

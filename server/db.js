@@ -3,10 +3,10 @@ const crypto = require('crypto');
 const util = require('util');
 const Database = require('better-sqlite3');
 const { readVersionFile } = require('./app-version');
+const { APP_CONFIG } = require('./app-config');
 
 const scrypt = util.promisify(crypto.scrypt);
 const db = new Database(path.join(__dirname, '..', 'database.sqlite'));
-const SESSION_INACTIVITY_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -149,7 +149,7 @@ function generateToken() {
 }
 
 function sessionCutoff(now = Math.floor(Date.now() / 1000)) {
-  return now - SESSION_INACTIVITY_TTL_SECONDS;
+  return now - APP_CONFIG.session.inactivityTtlSeconds;
 }
 
 function purgeExpiredSessions(now = Math.floor(Date.now() / 1000)) {

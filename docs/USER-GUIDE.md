@@ -7,7 +7,7 @@ FFmpeg Webapp is a browser UI for the two-pass batch encode workflow. It scans a
 ## Access
 
 - You must register or log in.
-- Only the username `koldKat` is allowed to use the application.
+- Only the configured authorized username is allowed to use the application. Set `FFMPEG_WEBAPP_USERNAME` before startup, or edit `access.authorizedUsername` in `server/app-config.js`.
 - Other accounts can exist, but they are blocked from the encode UI.
 - Mobile home-screen installation uses maskable VideoKat icons with a dark canvas, allowing Android launchers to crop the icon directly instead of adding a white wrapper.
 - When a saved session exists, refresh shows a brief “Restoring dashboard” state rather than the login form while the server validates that session. The dashboard shell appears before its live data finishes hydrating.
@@ -208,12 +208,12 @@ Shows current-batch events, including scans, starts, skips, failures, stops, and
 
 The localhost-only admin panel at `/admin` can:
 - create users
-- reset passwords for users other than `koldKat`
-- delete users other than `koldKat`
+- reset passwords for users other than the configured authorized user
+- delete users other than the configured authorized user
 - update the app version shown in the dashboard header
 - show hostname, user/session counts, RSS, heap memory, and current Node-plus-FFmpeg CPU usage
 
-`koldKat` is intentionally protected in the admin UI and admin API.
+The configured authorized user is intentionally protected in the admin UI and admin API.
 
 Saving the app version remains a manual admin action. The same submitted value is stored in SQLite and mirrored to the repository-root `VERSION` file. There is no automatic version increment. On a fresh database only, the initial `app_version` value is seeded by reading `VERSION`; an existing database value always wins on boot.
 

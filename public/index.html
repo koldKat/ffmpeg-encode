@@ -8,9 +8,10 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/icons/app-icon-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
+  <script src="/js/app-config.js"></script>
   <script>
     try {
-      if (localStorage.getItem('ffmpeg_webapp_token')) document.documentElement.classList.add('restoring-session');
+      if (localStorage.getItem(globalThis.FFMPEG_WEBAPP_CLIENT_CONFIG.sessionStorageKey)) document.documentElement.classList.add('restoring-session');
     } catch {}
   </script>
   <link rel="stylesheet" href="/css/style.css">
@@ -28,7 +29,7 @@
   <div id="login-screen" class="auth-shell">
     <div class="auth-card">
       <p class="eyebrow">Remote Access Enabled</p>
-      <h1>FFmpeg Batch Encode</h1>
+      <h1 data-app-name>FFmpeg Batch Encode</h1>
       <div class="auth-form">
         <input type="text" id="auth-username" placeholder="Username" autocomplete="username">
         <input type="password" id="auth-password" placeholder="Password" autocomplete="current-password">
@@ -45,7 +46,7 @@
     <div class="auth-card auth-card-narrow">
       <p class="eyebrow">Access Restricted</p>
       <h1>Account Logged In</h1>
-      <p class="auth-copy">This account exists, but only <strong>koldKat</strong> is allowed to use the FFmpeg webapp right now.</p>
+      <p class="auth-copy">This account exists, but only <strong id="blocked-username">the authorized user</strong> is allowed to use the FFmpeg webapp right now.</p>
       <div class="actions-row auth-actions">
         <button id="blocked-logout-btn" class="ghost-btn">Log Out</button>
       </div>
@@ -57,7 +58,7 @@
       <header class="hero">
         <div>
           <p class="eyebrow" id="app-eyebrow">Client + Server Encode Dashboard - version 1.0.9</p>
-          <h1>FFmpeg Batch Encode</h1>
+          <h1 data-app-name>FFmpeg Batch Encode</h1>
         </div>
         <div class="hero-status">
           <div class="top-actions">
@@ -373,7 +374,7 @@
           <div id="log-list" class="log-list"></div>
         </section>
       </main>
-      <footer class="app-footer"><span class="app-footer-brand">koldKat productions</span> <span id="app-footer-copy"></span></footer>
+      <footer class="app-footer"><span class="app-footer-brand" id="app-footer-brand">koldKat productions</span> <span id="app-footer-copy"></span></footer>
     </div>
   </div>
 

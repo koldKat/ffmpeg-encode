@@ -1,7 +1,11 @@
 const crypto = require('crypto');
+const { APP_CONFIG } = require('./app-config');
 
 class QueueInspectionStore {
-  constructor({ ttlMs = 10 * 60 * 1000, maxEntries = 20 } = {}) {
+  constructor({
+    ttlMs = APP_CONFIG.queue.inspectionTtlMs,
+    maxEntries = APP_CONFIG.queue.inspectionMaxEntries,
+  } = {}) {
     this.ttlMs = ttlMs;
     this.maxEntries = maxEntries;
     this.entries = new Map();

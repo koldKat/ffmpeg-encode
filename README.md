@@ -76,7 +76,7 @@ The SQLite database is created automatically as `database.sqlite`. Runtime datab
 
 Start operates only on the non-empty queue shown by the app. It never performs an implicit folder scan; use **Load File Queue** whenever you want to discover files.
 
-The current build authorizes only the username `koldKat` for encoding routes. This is controlled by `REMOTE_USERNAME` near the top of `server.js`; change it before deployment if a different account should operate the encoder. Other registered accounts can log in but cannot use the encoding interface.
+The current build authorizes one username for encoding routes. Set `FFMPEG_WEBAPP_USERNAME` before starting the server, or change `access.authorizedUsername` in `server/app-config.js`. Other registered accounts can log in but cannot use the encoding interface.
 
 ## Encoding Model
 
@@ -131,12 +131,14 @@ It can create and remove users, reset passwords, update the displayed app versio
 
 ```text
 server.js                 Runtime composition, API handlers, queue runner, and FFmpeg orchestration
+server/app-config.js      Deployment identity, access policy, defaults, limits, and timings
 server/db.js              SQLite schema, authentication, settings, and statistics
 server/http-router.js     HTTP route dispatch and admin/static-file gates
 server/queue-model.js     Queue/config normalization and audio-language selection
 server/media-probe.js     File discovery, sizing, and FFprobe audio metadata
 server/encoding-math.js   Target-size and bitrate calculations
 public/js/app.js          Main browser state, API/SSE lifecycle, and queue interactions
+public/js/app-config.js   Browser interaction, paging, and presentation constants
 public/js/*.js            Focused browser view, formatting, autocomplete, and queue modules
 test/                     Node built-in test suite for server-side behavior
 docs/USER-GUIDE.md        Detailed operator guide

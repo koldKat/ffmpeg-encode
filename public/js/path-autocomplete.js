@@ -1,4 +1,4 @@
-export function createPathAutocomplete({ apiFetch, escapeHtml }) {
+export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
   const timers = new Map();
 
   function render(menuEl, suggestions, activeIndex = -1) {
@@ -59,7 +59,7 @@ export function createPathAutocomplete({ apiFetch, escapeHtml }) {
     const schedule = () => {
       const timer = timers.get(inputEl);
       if (timer) clearTimeout(timer);
-      timers.set(inputEl, setTimeout(() => { void load(inputEl.value.trim()); }, 150));
+      timers.set(inputEl, setTimeout(() => { void load(inputEl.value.trim()); }, timing.debounceMs));
     };
 
     menuEl.addEventListener('mousedown', event => event.preventDefault());
@@ -69,7 +69,7 @@ export function createPathAutocomplete({ apiFetch, escapeHtml }) {
     });
     inputEl.addEventListener('input', schedule);
     inputEl.addEventListener('focus', schedule);
-    inputEl.addEventListener('blur', () => window.setTimeout(close, 120));
+    inputEl.addEventListener('blur', () => window.setTimeout(close, timing.blurCloseDelayMs));
     inputEl.addEventListener('keydown', event => {
       if (!suggestions.length) return;
       if (event.key === 'ArrowDown') activeIndex = Math.min(suggestions.length - 1, activeIndex + 1);

@@ -13,10 +13,10 @@ function createEncodingMath({ defaults, clampNonNegative }) {
   function computeVideoKbps(sizeMb, durationSeconds, config) {
     const totalBits = sizeMb * 1000000 * 8;
     const averageTotalBps = Math.floor(totalBits / durationSeconds);
-    const audioBps = clampNonNegative(config.audioKbit, 192) * 1000;
-    const overhead = clampNonNegative(config.overheadPct, 1);
+    const audioBps = clampNonNegative(config.audioKbit, defaults.audioKbit) * 1000;
+    const overhead = clampNonNegative(config.overheadPct, defaults.overheadPct);
     const videoBps = Math.floor((averageTotalBps - audioBps) * (100 - overhead) / 100);
-    return Math.max(Math.floor(videoBps / 1000), clampNonNegative(config.minVideoKbit, 300));
+    return Math.max(Math.floor(videoBps / 1000), clampNonNegative(config.minVideoKbit, defaults.minVideoKbit));
   }
 
   return { computeTargetSizeMb, computeVideoKbps };

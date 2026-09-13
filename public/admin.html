@@ -12,7 +12,7 @@
     <header class="hero admin-hero">
       <div>
         <p class="eyebrow">Localhost Admin Only</p>
-        <h1>FFmpeg Batch Encode Admin</h1>
+        <h1 id="admin-app-title">FFmpeg Batch Encode Admin</h1>
       </div>
       <div class="hero-status admin-version-stack">
         <div class="viewer-chip" id="admin-machine-chip"></div>
@@ -101,13 +101,14 @@
       <section class="panel admin-users-panel">
         <div class="panel-head">
           <h2>Users</h2>
-          <span class="panel-kicker">`koldKat` is protected</span>
+          <span class="panel-kicker" id="admin-protected-user">Authorized user is protected</span>
         </div>
         <div id="admin-users-list" class="admin-users-list"></div>
       </section>
     </main>
   </div>
 
-  <script src="/js/admin.js"></script>
+  <script src="/js/app-config.js"></script>
+  <script type="module" src="/js/admin.js"></script>
 </body>
 </html>

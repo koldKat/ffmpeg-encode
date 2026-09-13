@@ -1,4 +1,15 @@
-function createMediaProbe({ execFile, fs, path, videoExtensions, isPreservedSourceOutput, normalizeAudioTracks }) {
+const { APP_CONFIG } = require('./app-config');
+
+function createMediaProbe({
+  execFile,
+  fs,
+  path,
+  videoExtensions,
+  isPreservedSourceOutput,
+  normalizeAudioTracks,
+  ffprobeMaxBufferBytes = APP_CONFIG.media.ffprobeMaxBufferBytes,
+  defaultConcurrency = APP_CONFIG.queue.audioProbeConcurrency,
+}) {
   async function walkFiles(directory, onFile = null) {
     const entries = await fs.promises.readdir(directory, { withFileTypes: true });
     const results = [];
@@ -26,7 +37,7 @@ function createMediaProbe({ execFile, fs, path, videoExtensions, isPreservedSour
 
   function execFileJson(command, args) {
     return new Promise((resolve, reject) => {
-      execFile(command, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => {
+      execFile(command, args, { maxBuffer: ffprobeMaxBufferBytes }, (error, stdout) => {
         if (error) return reject(error);
         try {
           resolve(JSON.parse(stdout));
@@ -64,7 +75,7 @@ function createMediaProbe({ execFile, fs, path, videoExtensions, isPreservedSour
     return { durationSeconds, totalFrames, audioTracks };
   }
 
-  async function enrichQueueAudioTracks(items, concurrency = 4, onProgress = null) {
+  async function enrichQueueAudioTracks(items, concurrency = defaultConcurrency, onProgress = null) {
     const queue = [...(items || [])];
     async function worker() {
       while (queue.length) {
