@@ -39,7 +39,7 @@ Main fields:
 - `MB/step`: target-size rounding step in MB. Default `50`.
 - `Audio kbps`: AAC audio bitrate.
 - `Min video kbps`: minimum allowed video bitrate floor.
-- `Overhead %`: bitrate safety margin.
+- `Nice`: encoder CPU priority, from `0` to `19`. Default `15`. Higher values give other apps more CPU time.
 - `Threads`: optional encoder thread count. `0` means ffmpeg default behavior.
 
 Target size is calculated as:

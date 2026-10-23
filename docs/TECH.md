@@ -86,7 +86,8 @@ Only one batch can run across the whole server. Media probing during an editable
 | `mbStep` | `50` | Target-size rounding step in decimal MB |
 | `audioKbit` | `192` | AAC audio bitrate in kbit/s |
 | `minVideoKbit` | `300` | Minimum calculated video bitrate |
-| `overheadPct` | `1` | Safety deduction from calculated video bitrate |
+| `overheadPct` | `1` | Fixed internal safety deduction from calculated video bitrate; submitted overrides are ignored |
+| `nice` | `15` | Encoder process niceness, clamped to integers from 0 to 19 |
 | `ffmpegLoglevel` | `error` | FFmpeg log level |
 | `x264Profile` | `high` | H.264 profile |
 | `x264Level` | `4.1` | H.264 level |
@@ -285,6 +286,8 @@ targetSizeMb = max(1 step, ceil(rawTargetMb / mbStep)) * mbStep
 ```
 
 The implementation keeps three decimal places during step rounding to reduce floating-point boundary errors.
+
+Each FFmpeg pass starts through `server/encoder-process.js`, which sets its absolute OS process niceness to `nice` after spawning. The FFmpeg PID and detached process group remain the ones used for pause, cancellation, and CPU sampling. Priority failures stop that encoder and surface an error. Existing saved configurations without `nice` use `15`.
 
 Video bitrate is:
 

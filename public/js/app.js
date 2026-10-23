@@ -37,7 +37,7 @@ const els = {
   mbStep: document.getElementById('mb-step'),
   audioKbit: document.getElementById('audio-kbit'),
   minVideoKbit: document.getElementById('min-video-kbit'),
-  overheadPct: document.getElementById('overhead-pct'),
+  nice: document.getElementById('nice'),
   encThreadsLabel: document.getElementById('enc-threads-label'),
   encThreads: document.getElementById('enc-threads'),
   deleteAllSources: document.getElementById('delete-all-sources'),
@@ -168,7 +168,7 @@ function setConfigInputs(config, force = false) {
   els.mbStep.value = config.mbStep ?? 50;
   els.audioKbit.value = config.audioKbit ?? 192;
   els.minVideoKbit.value = config.minVideoKbit ?? 300;
-  els.overheadPct.value = config.overheadPct ?? 1;
+  els.nice.value = config.nice ?? 15;
   els.encThreads.value = config.encThreads ?? 0;
   els.deleteAllSources.checked = config.deleteSource === true;
   hydratedConfig = true;
@@ -184,7 +184,7 @@ function configFromForm() {
     mbStep: Number(els.mbStep.value),
     audioKbit: Number(els.audioKbit.value),
     minVideoKbit: Number(els.minVideoKbit.value),
-    overheadPct: Number(els.overheadPct.value),
+    nice: els.nice.value === '' ? 15 : Number(els.nice.value),
     encThreads: Number(els.encThreads.value),
     deleteSource: els.deleteAllSources.checked,
   };
@@ -648,7 +648,7 @@ function render(state, options = {}) {
     els.mbStep,
     els.audioKbit,
     els.minVideoKbit,
-    els.overheadPct,
+    els.nice,
     els.encThreads,
     els.deleteAllSources,
   ].forEach(input => {

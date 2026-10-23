@@ -36,3 +36,12 @@ test('preserves saved queue items before newly discovered files', () => {
     ['/source/a.mkv', 'film', 0],
   ]);
 });
+
+test('saved configurations gain default niceness and retain a fixed internal size margin', () => {
+  const queue = model();
+  assert.equal(queue.normalizeConfig({}).nice, 15);
+  assert.equal(queue.normalizeConfig({ nice: 0 }).nice, 0);
+  assert.equal(queue.normalizeConfig({ nice: 25 }).nice, 19);
+  assert.equal(queue.normalizeConfig({ nice: 'invalid' }).nice, 15);
+  assert.equal(queue.normalizeConfig({ overheadPct: 90 }).overheadPct, 1);
+});

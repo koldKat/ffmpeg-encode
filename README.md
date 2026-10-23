@@ -16,7 +16,7 @@ Test with disposable media and verify all source, staging, and destination paths
 - Opt-in source deletion globally or per file, persisted with the queue plan
 - Non-destructive same-path MP4 output with generated files excluded from later scans
 - Audio stream metadata discovered with `ffprobe`
-- Configurable x264 preset, target MB per minute, size rounding, audio bitrate, bitrate floor, overhead, and thread count
+- Configurable x264 preset, target MB per minute, size rounding, audio bitrate, bitrate floor, CPU niceness, and thread count
 - Two-pass H.264 encoding with AAC audio
 - Cross-filesystem staging and promotion with live copy progress
 - Live file progress, overall progress, speed, ETA, savings, run log, and completed-file panels

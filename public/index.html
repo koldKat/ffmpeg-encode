@@ -121,8 +121,8 @@
               <input type="number" id="min-video-kbit" min="1">
             </label>
             <label>
-              <span>Overhead %</span>
-              <input type="number" id="overhead-pct" min="0">
+              <span title="Encoder CPU priority: 0 to 19. Higher values give other apps more CPU time.">Nice</span>
+              <input type="number" id="nice" min="0" max="19" step="1" value="15">
             </label>
             <label>
               <span id="enc-threads-label">Threads</span>

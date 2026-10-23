@@ -3,7 +3,8 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn, execFile } = require('child_process');
+const { execFile } = require('child_process');
+const { spawnEncoder } = require('./server/encoder-process');
 const db = require('./server/db');
 const { QueueAppendError, discoverAppendableFiles } = require('./server/queue-append');
 const { QueueInspectionStore } = require('./server/queue-inspections');
@@ -924,7 +925,7 @@ function runFfmpegPass(pass, context) {
     publish();
 
     const args = buildFfmpegArgs({ inputPath, stagePath, vbKbps, config, pass, passlog, audioTrack });
-    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const child = spawnEncoder(args, config);
     currentChild = child;
 
     let stdoutBuffer = '';

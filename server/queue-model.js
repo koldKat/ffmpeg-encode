@@ -1,3 +1,5 @@
+const { normalizeNice } = require('./encoder-process');
+
 function clampNonNegative(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? number : fallback;
@@ -61,7 +63,8 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
       mbStep: clampNonNegative(rawConfig.mbStep, defaults.mbStep),
       audioKbit: clampNonNegative(rawConfig.audioKbit, defaults.audioKbit),
       minVideoKbit: clampNonNegative(rawConfig.minVideoKbit, defaults.minVideoKbit),
-      overheadPct: clampNonNegative(rawConfig.overheadPct, defaults.overheadPct),
+      overheadPct: defaults.overheadPct,
+      nice: normalizeNice(rawConfig.nice, defaults.nice),
       ffmpegLoglevel: String(rawConfig.ffmpegLoglevel || defaults.ffmpegLoglevel),
       x264Profile: String(rawConfig.x264Profile || defaults.x264Profile),
       x264Level: String(rawConfig.x264Level || defaults.x264Level),

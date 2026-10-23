@@ -25,7 +25,8 @@ const APP_CONFIG = Object.freeze({
     mbStep: 50,
     audioKbit: 192,
     minVideoKbit: 300,
-    overheadPct: 1,
+    overheadPct: 1, // Internal size safety margin.
+    nice: 15,
     ffmpegLoglevel: 'error',
     x264Profile: 'high',
     x264Level: '4.1',
