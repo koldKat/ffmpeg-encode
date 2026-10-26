@@ -1,9 +1,12 @@
+import { initThemedControls } from './themed-controls.js';
 import { createActiveQueueAdder } from './active-queue-add.js';
 import { buildQueueSelectionUnits } from './queue-units.js';
 import { escapeHtml, formatDate, formatHms, formatPct, formatSize } from './formatters.js';
 import { createPathAutocomplete } from './path-autocomplete.js';
 import { createCurrentFileView } from './current-file-view.js';
 import { createActivityView } from './activity-view.js';
+
+initThemedControls();
 
 const CLIENT_CONFIG = globalThis.FFMPEG_WEBAPP_CLIENT_CONFIG;
 

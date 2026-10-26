@@ -1,6 +1,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  color-scheme: dark;
   --bg: #0b1220;
   --bg-accent: #111827;
   --panel: rgba(17, 24, 39, 0.88);
@@ -744,7 +745,8 @@ input[type=number] {
 }
 
 #delete-all-sources,
-.delete-source-check {
+.delete-source-check,
+.queue-check {
   appearance: none;
   display: inline-grid;
   flex: 0 0 auto;
@@ -761,7 +763,8 @@ input[type=number] {
 }
 
 #delete-all-sources::after,
-.delete-source-check::after {
+.delete-source-check::after,
+.queue-check::after {
   content: '';
   width: 7px;
   height: 4px;
@@ -772,24 +775,28 @@ input[type=number] {
 }
 
 #delete-all-sources:checked,
-.delete-source-check:checked {
+.delete-source-check:checked,
+.queue-check:checked {
   border-color: var(--orange);
   background: var(--orange);
 }
 
 #delete-all-sources:checked::after,
-.delete-source-check:checked::after {
+.delete-source-check:checked::after,
+.queue-check:checked::after {
   opacity: 1;
 }
 
 #delete-all-sources:focus-visible,
-.delete-source-check:focus-visible {
+.delete-source-check:focus-visible,
+.queue-check:focus-visible {
   outline: 2px solid rgba(56, 189, 248, 0.7);
   outline-offset: 2px;
 }
 
 #delete-all-sources:disabled,
-.delete-source-check:disabled {
+.delete-source-check:disabled,
+.queue-check:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -1267,7 +1274,6 @@ input[type=number] {
   margin-top: 0.1rem;
   width: 16px;
   height: 16px;
-  accent-color: var(--orange);
 }
 
 .queue-remove-btn {
@@ -1632,4 +1638,37 @@ input[type=number] {
 
 .alltime-head {
   margin-top: 0.5rem;
+}
+
+/* Shared controls use the same palette in the main page and modal queue editor. */
+.themed-select { position: relative; min-width: 0; width: 100%; }
+select.themed-native-select { position: absolute; width: 1px; height: 1px; padding: 0; opacity: 0; pointer-events: none; }
+.themed-select-button {
+  display: block; width: 100%; min-width: 0; border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px; padding: 0.44rem 1.8rem 0.44rem 0.56rem;
+  background-color: rgba(15, 23, 42, 0.9); color: var(--text); text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.themed-select-button, input.themed-combobox {
+  background-image: linear-gradient(45deg, transparent 50%, var(--orange) 50%), linear-gradient(135deg, var(--orange) 50%, transparent 50%);
+  background-position: calc(100% - 0.8rem) 50%, calc(100% - 0.55rem) 50%;
+  background-repeat: no-repeat; background-size: 0.28rem 0.28rem;
+}
+.config-grid input.themed-combobox, .queue-bulk-fields input.themed-combobox { padding-right: 1.8rem; }
+.queue-bulk-fields .themed-select-button { padding: 0.38rem 1.8rem 0.38rem 0.48rem; font-size: 0.84rem; border-radius: 10px; }
+.themed-select-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.themed-select-button:focus-visible, button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.themed-options {
+  position: fixed; inset: auto; margin: 0; z-index: 1000; padding: 0.25rem;
+  overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px;
+  background: #101a2b; color: var(--text); box-shadow: 0 14px 36px rgba(2, 6, 23, 0.5);
+}
+.themed-options[hidden] { display: none; }
+.themed-option { display: block; width: 100%; padding: 0.35rem 0.48rem; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font: inherit; font-size: 0.84rem; overflow-wrap: anywhere; }
+.themed-option:hover, .themed-option.is-active { background: rgba(56, 189, 248, 0.16); color: #fff; }
+input::placeholder { color: var(--muted); opacity: 0.75; }
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text); caret-color: var(--text);
+  box-shadow: 0 0 0 1000px #0f172a inset;
 }
