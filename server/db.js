@@ -76,14 +76,13 @@ db.exec(`
 `);
 
 const storedAppVersion = db.prepare("SELECT value FROM app_meta WHERE key = 'app_version'").get();
-if (!storedAppVersion) {
-  const fileVersion = readVersionFile();
-  if (fileVersion) {
-    db.prepare(`
-      INSERT INTO app_meta (key, value, updated_at)
-      VALUES ('app_version', ?, strftime('%s', 'now'))
-    `).run(fileVersion);
-  }
+const fileAppVersion = readVersionFile();
+if (fileAppVersion && fileAppVersion !== storedAppVersion?.value) {
+  db.prepare(`
+    INSERT INTO app_meta (key, value, updated_at)
+    VALUES ('app_version', ?, strftime('%s', 'now'))
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(fileAppVersion);
 }
 
 try {
@@ -365,7 +364,17 @@ async function updateUserPassword(username, password) {
 }
 
 function deleteUserByUsername(username) {
-  return db.prepare('DELETE FROM users WHERE username = ?').run(username).changes;
+  return db.transaction(() => {
+    const user = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (!user) return 0;
+    if (db.prepare('SELECT 1 FROM job_runs WHERE user_id = ? LIMIT 1').get(user.id)) {
+      throw Object.assign(new Error('This account has encoding history and cannot be deleted without losing run statistics.'), { status: 409 });
+    }
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM user_settings WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM user_queue_plans WHERE user_id = ?').run(user.id);
+    return db.prepare('DELETE FROM users WHERE id = ?').run(user.id).changes;
+  })();
 }
 
 function getAppMeta(key) {

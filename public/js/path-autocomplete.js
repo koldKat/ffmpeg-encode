@@ -11,7 +11,7 @@ export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
     }
     menuEl.hidden = false;
     menuEl.innerHTML = values.map((value, index) => `
-      <button type="button" class="path-suggestion-item${index === activeIndex ? ' is-active' : ''}" data-path-value="${escapeHtml(value)}" title="${escapeHtml(value)}">${escapeHtml(value)}</button>
+      <button type="button" class="path-suggestion-item${index === activeIndex ? ' is-active' : ''}" data-path-value="${escapeHtml(value)}" data-tooltip="${escapeHtml(value)}">${escapeHtml(value)}</button>
     `).join('');
   }
 
@@ -27,6 +27,9 @@ export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
     let activeIndex = -1;
     let requestId = 0;
     const close = () => {
+      requestId += 1;
+      clearTimeout(timers.get(inputEl));
+      timers.delete(inputEl);
       activeIndex = -1;
       suggestions = [];
       render(menuEl, []);
@@ -42,7 +45,7 @@ export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
       if (!value) return close();
       try {
         const next = await fetchSuggestions(value);
-        if (requestId !== nextRequestId) return;
+        if (requestId !== nextRequestId || document.activeElement !== inputEl || inputEl.value.trim() !== value || inputEl.disabled) return;
         suggestions = next;
         activeIndex = suggestions.length ? 0 : -1;
         redraw();
@@ -57,6 +60,7 @@ export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
       void load(inputEl.value.trim());
     };
     const schedule = () => {
+      requestId += 1;
       const timer = timers.get(inputEl);
       if (timer) clearTimeout(timer);
       timers.set(inputEl, setTimeout(() => { void load(inputEl.value.trim()); }, timing.debounceMs));
@@ -69,8 +73,15 @@ export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
     });
     inputEl.addEventListener('input', schedule);
     inputEl.addEventListener('focus', schedule);
-    inputEl.addEventListener('blur', () => window.setTimeout(close, timing.blurCloseDelayMs));
+    inputEl.addEventListener('blur', close);
+    inputEl.closest('dialog')?.addEventListener('close', close);
     inputEl.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        const wasOpen = !menuEl.hidden;
+        close();
+        if (wasOpen) { event.preventDefault(); event.stopPropagation(); }
+        return;
+      }
       if (!suggestions.length) return;
       if (event.key === 'ArrowDown') activeIndex = Math.min(suggestions.length - 1, activeIndex + 1);
       else if (event.key === 'ArrowUp') activeIndex = Math.max(0, activeIndex - 1);
@@ -81,6 +92,8 @@ export function createPathAutocomplete({ apiFetch, escapeHtml, timing }) {
         apply(suggestions[activeIndex]);
         return;
       } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         close();
         return;
       } else return;

@@ -19,7 +19,7 @@ FFmpeg Encode Web App is a single-process Node.js service with a framework-free 
 | `server/queue-append.js` | Active-run path containment, recursive supported-file discovery, and duplicate filtering |
 | `server/queue-inspections.js` | Short-lived, user-scoped, single-use storage for probed append candidates |
 | `server/active-queue-order.js` | Validates and applies active pending-prefix reorder operations without moving the current encode |
-| `server/app-version.js` | Reads the boot seed and atomically mirrors manually saved app versions to `VERSION` |
+| `server/app-version.js` | Reads the release version and atomically mirrors manually saved app versions to `VERSION` |
 | `server/static.js` | Traversal-safe static files, MIME types, no-cache revalidation, and content ETags |
 | `public/js/app.js` | Browser composition root: application state, SSE lifecycle, API actions, queue interactions, and feature wiring |
 | `public/js/app-config.js` | Browser paging, interaction timing, storage key, and presentation constants |
@@ -185,7 +185,7 @@ Folder grouping is frontend presentation only. Root-level files are individual s
 
 ### Active-run append
 
-`POST /api/queue/inspect` accepts a file or directory path, requires the authenticated user to own the active run, and delegates filesystem policy to `server/queue-append.js`. It probes candidate audio metadata and stores the result in `server/queue-inspections.js` under a random, user-scoped, single-use token with a ten-minute lifetime.
+`POST /api/queue/inspect` accepts a file or directory path, requires the authenticated user to own the active run, and delegates filesystem policy to `server/queue-append.js`. It probes candidate audio metadata and stores the result in `server/queue-inspections.js` under a random, user- and run-scoped token with a ten-minute lifetime. The token is consumed only after append validation succeeds.
 
 Discovery is restricted to the active source root using both lexical and real-path containment, excludes the staging root, recursively includes the standard video extensions, resolves duplicate paths, and removes paths already present in the internal queue.
 
@@ -249,7 +249,7 @@ If neither queue is available, the endpoint returns `400` and does not scan the 
 `encodeFile()`:
 
 1. Resolves tune, destination, and numeric audio index.
-2. Builds a staging `.mp4` path mirroring the source-relative directory under `outRoot`.
+2. Builds a unique hidden `.ffmpeg-stage-<uuid>.mp4` path in the source-relative directory under `outRoot`.
 3. Builds the final `.mp4` under the item's `saveTo`.
 4. Skips a final file newer than the source.
 5. Probes duration, frames, and audio streams.
@@ -330,7 +330,7 @@ Speed is media duration divided by encode wall time. Average bitrate is output b
 
 After successful promotion, the original is deleted only when that queue item's persisted `deleteSource` value is true. Empty source directories are removed only while descendants of `sourceRoot`; the source root is never removed.
 
-An MP4 whose final path exactly equals its source is replaced through staging only when deletion is selected. Otherwise `finalOutputPath()` chooses `<basename>.encoded.mp4` so promotion cannot overwrite the original. It uses the same fallback whenever the requested final path matches a different queued source, regardless of deletion selection, and increments to `.encoded-2.mp4` when needed to avoid another queued source. Recursive scans and active-run inspection exclude these case-insensitive generated suffixes to prevent repeat-processing loops.
+An MP4 whose final path exactly equals its source is replaced through staging only when deletion is selected. Otherwise `finalOutputPath()` chooses `<basename>.encoded.mp4` so promotion cannot overwrite the original. It uses the same fallback whenever the requested final path matches a different queued source, regardless of deletion selection, and increments to `.encoded-2.mp4` when needed to avoid another queued source. Recursive scans and active-run inspection exclude these case-insensitive generated suffixes and private staging filenames to prevent repeat-processing loops.
 
 ## Pause, Stop, Shutdown, And Restart
 
@@ -352,7 +352,7 @@ There is no startup reconciliation for a `job_runs` row left `running` after a c
 
 The client renders state returned directly by command endpoints as well as SSE, avoiding delayed UI changes after start, stop, pause, and graceful-stop commands.
 
-The browser title displays overall percentage during a run. A disconnected stream is closed and reported; the custom error handler does not implement automatic reconnection.
+The browser title displays overall percentage during a run. Temporary disconnections are reported while the existing EventSource reconnects automatically; logout explicitly closes the stream.
 
 ## Frontend State And Rendering
 
@@ -428,7 +428,7 @@ Versions are trimmed, limited to 40 characters, allow Unicode such as `0.2.6.2 Î
 | `user_settings` | `(user_id, machine_name)` | Config JSON and update time |
 | `user_queue_plans` | `(user_id, machine_name)` | Source root, remaining queue JSON, update time |
 | `job_runs` | `id` | Status, paths, counts, byte/timing totals, timestamps |
-| `app_meta` | key | Global values such as `app_version`; a missing fresh-DB value is seeded once from `VERSION` |
+| `app_meta` | key | Global values such as `app_version`; the stored display version is synchronized from a nonempty `VERSION` file at startup |
 
 User foreign keys cascade deletes to sessions, settings, plans, and runs.
 
@@ -511,3 +511,15 @@ Back up `database.sqlite` with its WAL/SHM files while running, or stop the serv
 ## Change Checklist
 
 When behavior changes, review queue fields/statuses/paging, defaults and formulas, FFmpeg mapping, destructive promotion, state and ETA, API contracts, schema/migrations, restart controls, security assumptions, `docs/USER-GUIDE.md`, and `README.md`.
+
+## Queue and lifecycle fixes in v. 0.3.2.0 Î±
+
+The shared listbox is mounted inside its owning modal dialog before entering the popover top layer. This preserves hit testing under modal inertness. A shared tooltip module handles dynamic hints, keyboard descriptions, viewport positioning and dialog ownership. Native title attributes are not used for hints.
+
+The active queue editor scopes requests to the batch start timestamp and source root. It ignores stale responses, preserves drafts across progress updates and locks conflicting edits during append requests. Path autocomplete invalidates requests immediately when the query changes, loses focus or is dismissed. Queue pagination ignores stale responses, and SSE reconciles changes to queue order without disabling automatic reconnect.
+
+Inspection tokens are scoped to user and run ID. Capacity eviction happens only when creating an inspection; request validation does not consume a token. Start and queue mutations recheck state after asynchronous boundaries. Pause actions retain the requested encoder identity, and delayed force-stop timers cannot signal a replacement child.
+
+Each encode uses a unique hidden MP4 staging name under its staging directory. Generated staging files are excluded from discovery, and temporary staging output is cleaned after failure or completion. This avoids overwriting a source MP4 or another queued source when source and staging paths overlap. Final output naming and explicit source-deletion rules still apply. Account deletion removes dependent sessions and settings transactionally and rejects deletion of accounts with encoding history.
+
+Run the normal Node test suite with `npm test`. Optional pointer-interaction regressions require Node 22 or newer and a local Chromium executable: `CHROMIUM=/path/to/chromium node test/dashboard-browser.cjs`. Browser tests use isolated API fixtures and disposable browser profiles; they do not open the live database or control real encoders. Pull the committed changes on the remote machine and restart its service after the current batch has finished. Startup synchronizes the stored app version from the checked-out VERSION file; admin version edits continue to write both values.

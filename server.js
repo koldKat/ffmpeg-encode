@@ -11,6 +11,7 @@ const { QueueInspectionStore } = require('./server/queue-inspections');
 const {
   allSourcesSelected,
   finalOutputPath,
+  stagingOutputPath,
   isPreservedSourceOutput,
   resolveDeleteSource,
 } = require('./server/delete-source-policy');
@@ -118,9 +119,10 @@ function stopActiveChild(signal = 'SIGINT') {
 
 function forceStopActiveChild() {
   if (!currentChild) return;
+  const child = currentChild;
   stopActiveChild('SIGINT');
   setTimeout(() => {
-    if (currentChild) stopActiveChild('SIGKILL');
+    if (currentChild === child) stopActiveChild('SIGKILL');
   }, APP_CONFIG.timing.forceKillDelayMs).unref();
 }
 
@@ -1100,7 +1102,7 @@ async function encodeFile(queueItem, index, total, config) {
   const rel = path.relative(config.sourceRoot, filePath);
   const relNoExt = rel.replace(path.extname(rel), '');
   const outDir = path.join(config.outRoot, path.dirname(rel));
-  const stagePath = path.join(config.outRoot, `${relNoExt}.mp4`);
+  const stagePath = stagingOutputPath(config.outRoot, rel);
   const srcDir = path.dirname(filePath);
   const baseNoExt = path.basename(relNoExt);
   const deleteSource = queueItem.deleteSource === true;
@@ -1218,6 +1220,7 @@ async function encodeFile(queueItem, index, total, config) {
     pushEvent(`Failed ${path.basename(filePath)}: ${error.message}`, 'error');
   } finally {
     await cleanupPasslog(passlog);
+    await removeIfExists(stagePath);
   }
 }
 
@@ -1526,6 +1529,10 @@ async function handleQueue(req, res, url = null) {
     return;
   }
   const body = await readBody(req);
+  if (state.active || runnerPromise || scanInProgress) {
+    send(res, 409, { error: 'The queue became active or started loading while this edit was pending.' });
+    return;
+  }
   const requestedOrder = Array.isArray(body.order) ? body.order.map(String) : [];
   if (requestedOrder.length) {
     if (requestedOrder.length !== state.queue.length) {
@@ -1634,7 +1641,16 @@ async function handleQueueDeleteSource(req, res) {
     return;
   }
 
+  if (scanInProgress) {
+    send(res, 409, { error: 'Wait for the queue to finish loading before changing source deletion.' });
+    return;
+  }
+  const requestedRunId = activeRunId;
   const body = await readBody(req);
+  if (scanInProgress || activeRunId !== requestedRunId || (state.active && activeUserId !== session.user_id)) {
+    send(res, 409, { error: 'The active batch or file changed while this request was pending.' });
+    return;
+  }
   const deleteSource = body.deleteSource === true;
   const applyAll = body.all === true;
   const filePaths = Array.isArray(body.filePaths) ? [...new Set(body.filePaths.map(String))] : [];
@@ -1681,7 +1697,12 @@ async function handleQueueInspect(req, res) {
     return;
   }
 
+  const inspectionRunId = activeRunId;
   const body = await readBody(req);
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id || activeRunId !== inspectionRunId) {
+    send(res, 409, { error: 'The active batch changed before inspection began.' });
+    return;
+  }
   const rawPath = String(body.path || '').trim();
   if (!rawPath) {
     send(res, 400, { error: 'A file or folder path is required.' });
@@ -1697,7 +1718,7 @@ async function handleQueueInspect(req, res) {
     return;
   }
 
-  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id || activeRunId !== inspectionRunId) {
     send(res, 409, { error: 'The active batch ended before the files could be added.' });
     return;
   }
@@ -1709,7 +1730,7 @@ async function handleQueueInspect(req, res) {
     { saveTo: path.dirname(filePath) },
   ));
   await enrichQueueAudioTracks(items);
-  if (!state.active || !runnerPromise || activeUserId !== session.user_id) {
+  if (!state.active || !runnerPromise || activeUserId !== session.user_id || activeRunId !== inspectionRunId) {
     send(res, 409, { error: 'The active batch ended while the files were being inspected.' });
     return;
   }
@@ -1719,6 +1740,7 @@ async function handleQueueInspect(req, res) {
   }
   const inspectionId = queueInspections.create(session.user_id, {
     sourceRoot: state.config.sourceRoot,
+    runId: inspectionRunId,
     items,
   });
   send(res, 200, { ok: true, inspectionId, found: items.length, items });
@@ -1738,7 +1760,7 @@ async function handleQueueAppend(req, res) {
     send(res, 409, { error: 'The active batch ended before the files could be added.' });
     return;
   }
-  const inspection = queueInspections.consume(body.inspectionId, session.user_id);
+  const inspection = queueInspections.get(body.inspectionId, session.user_id, activeRunId);
   if (!inspection || inspection.sourceRoot !== state.config.sourceRoot) {
     send(res, 409, { error: 'The inspection expired or is no longer valid. Inspect the path again.' });
     return;
@@ -1759,6 +1781,7 @@ async function handleQueueAppend(req, res) {
   const pendingRequestedItems = requestedItems
     .filter(item => !currentPaths.has(path.resolve(item.fullPath)));
   if (!pendingRequestedItems.length) {
+    queueInspections.consume(body.inspectionId, session.user_id, activeRunId);
     send(res, 200, { ok: true, added: 0, state: clonePublicState(state.config) });
     return;
   }
@@ -1785,6 +1808,7 @@ async function handleQueueAppend(req, res) {
     );
   });
 
+  queueInspections.consume(body.inspectionId, session.user_id, activeRunId);
   state.queue.push(...newItems);
   syncGlobalDeleteSource(session.user_id, state.config.deleteSource);
   state.counts.total = state.queue.length;
@@ -1812,7 +1836,12 @@ async function handleActiveQueueOrder(req, res) {
     return;
   }
 
+  const requestedRunId = activeRunId;
   const body = await readBody(req);
+  if (!state.active || activeRunId !== requestedRunId) {
+    send(res, 409, { error: 'The active batch or file changed while this request was pending.' });
+    return;
+  }
   const requestedOrder = Array.isArray(body.order) ? body.order.map(String) : [];
   try {
     state.queue = reorderActiveQueue({
@@ -1846,6 +1875,10 @@ async function handleStart(req, res) {
     await fs.promises.access(config.sourceRoot);
   } catch {
     send(res, 400, { error: 'Source root does not exist.' });
+    return;
+  }
+  if (state.active || runnerPromise || scanInProgress) {
+    send(res, 409, { error: 'A job or queue scan started while this request was pending.' });
     return;
   }
   db.saveUserSettings(session.user_id, MACHINE_NAME, config);
@@ -1905,7 +1938,12 @@ async function handlePauseToggle(req, res) {
     send(res, 409, { error: 'No active ffmpeg process is available.' });
     return;
   }
+  const requestedRunId = activeRunId, requestedChild = currentChild;
   const body = await readBody(req);
+  if (!state.active || stopRequested || activeRunId !== requestedRunId || currentChild !== requestedChild) {
+    send(res, 409, { error: 'The active batch or file changed while this request was pending.' });
+    return;
+  }
   const enabled = body && Object.prototype.hasOwnProperty.call(body, 'enabled')
     ? Boolean(body.enabled)
     : !pauseRequested;
@@ -1934,7 +1972,12 @@ async function handleStopAfterCurrent(req, res) {
     send(res, 409, { error: 'Immediate stop already requested.' });
     return;
   }
+  const requestedRunId = activeRunId;
   const body = await readBody(req);
+  if (!state.active || stopRequested || activeRunId !== requestedRunId) {
+    send(res, 409, { error: 'The active batch or file changed while this request was pending.' });
+    return;
+  }
   const enabled = body && Object.prototype.hasOwnProperty.call(body, 'enabled')
     ? Boolean(body.enabled)
     : true;
@@ -2044,12 +2087,16 @@ async function handleAdminDeleteUser(req, res) {
     send(res, 403, { error: `${REMOTE_USERNAME} cannot be deleted.` });
     return;
   }
-  const changes = db.deleteUserByUsername(username);
-  if (!changes) {
-    send(res, 404, { error: 'User not found.' });
-    return;
+  try {
+    const changes = db.deleteUserByUsername(username);
+    if (!changes) {
+      send(res, 404, { error: 'User not found.' });
+      return;
+    }
+    send(res, 200, { ok: true, users: db.listUsers() });
+  } catch (error) {
+    send(res, error.status || 500, { error: error.status ? error.message : 'Unable to delete the account.' });
   }
-  send(res, 200, { ok: true, users: db.listUsers() });
 }
 
 function saveManualAppVersion(version) {

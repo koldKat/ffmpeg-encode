@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test --test-concurrency=1 test/*.test.js",
+    "test:browser": "node test/dashboard-browser.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.3"

@@ -1,4 +1,5 @@
 const path = require('node:path');
+const { randomUUID } = require('node:crypto');
 
 function resolveDeleteSource(overrides = {}, config = {}) {
   if (Object.prototype.hasOwnProperty.call(overrides, 'deleteSource')) {
@@ -30,13 +31,25 @@ function finalOutputPath({ sourcePath, destinationDir, baseName, deleteSource, s
   }
 }
 
+function stagingOutputPath(outRoot, relativeSourcePath) {
+  const root = path.resolve(outRoot);
+  const dir = path.resolve(root, path.dirname(relativeSourcePath));
+  const relative = path.relative(root, dir);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('Staging output must remain inside the staging root.');
+  }
+  return path.join(dir, `.ffmpeg-stage-${randomUUID()}.mp4`);
+}
+
 function isPreservedSourceOutput(filePath) {
-  return /\.encoded(?:-\d+)?\.mp4$/i.test(path.basename(String(filePath || '')));
+  const name = path.basename(String(filePath || ''));
+  return /\.encoded(?:-\d+)?\.mp4$/i.test(name) || /\.ffmpeg-stage-[a-f0-9-]+\.mp4$/i.test(name);
 }
 
 module.exports = {
   allSourcesSelected,
   finalOutputPath,
+  stagingOutputPath,
   isPreservedSourceOutput,
   resolveDeleteSource,
 };

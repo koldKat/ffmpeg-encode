@@ -1672,3 +1672,28 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   -webkit-text-fill-color: var(--text); caret-color: var(--text);
   box-shadow: 0 0 0 1000px #0f172a inset;
 }
+
+/* Hints stay above modal editors and never obscure or intercept clicks. */
+.dashboard-tooltip {
+  position: fixed;
+  inset: auto;
+  z-index: 1100;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  max-width: min(420px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  background: #101a2b;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.5);
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.dashboard-tooltip[hidden] { display: none; }

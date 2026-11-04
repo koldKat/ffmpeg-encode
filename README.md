@@ -96,7 +96,7 @@ For each queued file, the server:
 5. Runs FFmpeg pass 2 with the selected audio stream.
 6. Validates the staged output.
 7. Promotes it to the configured destination.
-8. Deletes the original when the final path differs from the source.
+8. Deletes the original only when source deletion was explicitly selected and the final path differs from the source.
 
 If staging and destination folders are on different filesystems, promotion falls back to copy-then-rename and reports move progress in the dashboard.
 
@@ -157,3 +157,5 @@ npm test
 - [Technical documentation](docs/TECH.md)
 
 When behavior, UI workflows, API routes, persistence, queue handling, encoding flow, or deployment assumptions change, update the relevant document in `docs/` with the code change.
+
+Inspection editors support themed dropdowns and tooltips on desktop and mobile. Drafts survive live progress updates, while stale requests from a finished or replaced batch are discarded. Encoding staging files use unique names so they cannot overwrite queued source files.

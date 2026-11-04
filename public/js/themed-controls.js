@@ -50,8 +50,12 @@ export function initThemedControls(root = document) {
       row.dataset.index = String(i);
       return row;
     }));
-    // Popovers remain above modal dialogs and are not clipped by queue panels.
-    if (!popup.showPopover) (record.control.closest('dialog') || document.body).append(popup);
+    // Modal dialogs make elements outside their DOM subtree inert, even in the top layer.
+    const host = record.control.closest('dialog') || document.body;
+    if (popup.parentNode !== host) {
+      if (popup.hidePopover && popup.matches(':popover-open')) popup.hidePopover();
+      host.append(popup);
+    }
     popup.hidden = false;
     if (popup.showPopover && !popup.matches(':popover-open')) popup.showPopover();
     const rect = record.control.getBoundingClientRect();
@@ -64,10 +68,11 @@ export function initThemedControls(root = document) {
     popup.style.top = upward ? 'auto' : `${rect.bottom + 5}px`;
     popup.style.bottom = upward ? `${window.innerHeight - rect.top + 5}px` : 'auto';
     record.control.setAttribute('aria-expanded', 'true');
-    highlight(options.findIndex(option => option.value === record.source.value));
+    const selected = options.findIndex(option => option.value === record.source.value);
+    highlight(selected >= 0 ? selected : 0);
   }
   function choose(index) {
-    if (!current || !options[index]) return;
+    if (!current || !options[index] || current.source.disabled || !current.control.isConnected) return close();
     const record = current, value = options[index].value;
     close();
     record.source.value = value;
@@ -149,5 +154,7 @@ export function initThemedControls(root = document) {
   document.addEventListener('focusin', event => { if (current && event.target !== current.control && !popup.contains(event.target)) close(); });
   window.addEventListener('resize', close);
   window.addEventListener('scroll', event => { if (current && event.target !== popup && !popup.contains(event.target)) close(); }, true);
-  document.addEventListener('close', close, true);
+  document.addEventListener('close', event => {
+    if (event.target === current?.control.closest('dialog')) close();
+  }, true);
 }

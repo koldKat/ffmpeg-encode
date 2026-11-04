@@ -68,3 +68,18 @@ test('increments the protected output name when its first fallback is another so
     ],
   }), path.join('/source', 'episode.encoded-2.mp4'));
 });
+
+test('staging paths cannot overwrite source MP4s or collide for matching basenames', () => {
+  const { stagingOutputPath } = require('../server/delete-source-policy');
+  const source = path.resolve('/source/season/episode.mp4');
+  const first = stagingOutputPath('/source', 'season/episode.mp4');
+  const second = stagingOutputPath('/source', 'season/episode.mkv');
+  assert.notEqual(first, source);
+  assert.notEqual(first, second);
+  assert.equal(path.dirname(first), path.dirname(source));
+  assert.ok(isPreservedSourceOutput(first));
+  assert.ok(isPreservedSourceOutput(second));
+  const longName = stagingOutputPath('/staging', 'x'.repeat(240) + '.mkv');
+  assert.ok(Buffer.byteLength(path.basename(longName)) < 255);
+  assert.throws(() => stagingOutputPath('/staging', '../outside.mkv'), /inside the staging root/);
+});

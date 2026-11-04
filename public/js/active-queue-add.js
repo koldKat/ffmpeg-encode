@@ -93,6 +93,8 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   let selectedUnitKeys = new Set();
   let busy = false;
   let draggedIndex = null;
+  let batchKey = null;
+  let generation = 0;
 
   const required = [panel, form, pathInput, inspectButton, inspectProgress, message, dialog, list, count,
     selectionCount, selectAllButton, clearButton, tuneInput, audioInput,
@@ -109,6 +111,10 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
 
   function setBusy(value, inspecting = false) {
     busy = value;
+    list.inert = value;
+    for (const control of [tuneInput, audioInput, saveInput, selectAllButton, clearButton, cancelButton]) control.disabled = value;
+    for (const button of [applyTuneButton, applyAudioButton, applySaveButton]) button.disabled = value || !selectedUnitKeys.size;
+    addButton.toggleAttribute('aria-busy', value && !inspecting);
     inspectButton.disabled = value;
     inspectButton.textContent = value && inspecting ? 'Inspecting...' : 'Inspect';
     inspectProgress.hidden = !(value && inspecting);
@@ -118,6 +124,11 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
 
   function closeDialog() {
     if (dialog.open) dialog.close();
+    inspectionId = '';
+    items = [];
+    selectedUnitKeys.clear();
+    renderAudioOptions();
+    renderItems();
   }
 
   function renderAudioOptions() {
@@ -164,11 +175,11 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       const deleteItems = unit.deleteSourceItems || [];
       const deleteControl = deleteItems.length === 1
         ? `<label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(deleteItems[0].fullPath)}" ${deleteItems[0].deleteSource ? 'checked' : ''}> delete source</label>`
-        : `<details class="delete-source-group"><summary>delete source ${deleteItems.filter(item => item.deleteSource).length}/${deleteItems.length}</summary><div class="delete-source-group-list">${deleteItems.map(item => `<label><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(item.fullPath)}" ${item.deleteSource ? 'checked' : ''}> <span title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span></label>`).join('')}</div></details>`;
+        : `<details class="delete-source-group"><summary>delete source ${deleteItems.filter(item => item.deleteSource).length}/${deleteItems.length}</summary><div class="delete-source-group-list">${deleteItems.map(item => `<label><input type="checkbox" class="delete-source-check" data-editor-delete-source="${escapeHtml(item.fullPath)}" ${item.deleteSource ? 'checked' : ''}> <span data-tooltip="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span></label>`).join('')}</div></details>`;
       return `
         <article class="list-item queue-item" data-editor-index="${index}">
           <input type="checkbox" class="queue-check" data-editor-select="${escapeHtml(unit.key)}" ${checked}>
-          <button type="button" class="queue-drag-handle" draggable="true" data-editor-drag="${index}" aria-label="Drag to reorder" title="Drag to reorder">::</button>
+          <button type="button" class="queue-drag-handle" draggable="true" data-editor-drag="${index}" aria-label="Drag to reorder" data-tooltip="Drag to reorder">::</button>
           <div class="queue-item-body">
             <div class="list-item-head">
               <div class="list-item-title queue-title-hint" data-name-hint="${escapeHtml(unit.title)}" data-path-hint="${escapeHtml(unit.hoverPath)}"><span class="queue-title-text">${escapeHtml(unit.title)}</span></div>
@@ -177,19 +188,19 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
             <div class="queue-meta">
               <span class="meta-chip">${unit.type} <strong>${unit.filePaths.length}</strong></span>
               <span class="meta-chip">tune <strong>${escapeHtml(unit.tune || activeTune)}</strong></span>
-              <span class="meta-chip" title="${audioTitle}">audio <strong>${escapeHtml(audio.selected)}</strong></span>
-              <span class="meta-chip audio-track-chip" title="${audioTitle}">available <strong>${escapeHtml(audio.available)}</strong></span>
+              <span class="meta-chip" data-tooltip="${audioTitle}">audio <strong>${escapeHtml(audio.selected)}</strong></span>
+              <span class="meta-chip audio-track-chip" data-tooltip="${audioTitle}">available <strong>${escapeHtml(audio.available)}</strong></span>
               <span class="meta-chip">save to <strong>${escapeHtml(unit.saveTo || unit.subtitle)}</strong></span>
               ${deleteControl}
             </div>
           </div>
-          <button type="button" class="queue-remove-btn" data-editor-remove="${index}" aria-label="Remove from additions" title="Remove from additions">X</button>
+          <button type="button" class="queue-remove-btn" data-editor-remove="${index}" aria-label="Remove from additions" data-tooltip="Remove from additions">X</button>
         </article>`;
     }).join('');
   }
 
   function applyToSelected(field, value, fallback) {
-    if (!selectedUnitKeys.size) return;
+    if (busy || !selectedUnitKeys.size) return;
     const selectedFilePaths = getSelectedFilePaths();
     for (const item of items) {
       if (selectedFilePaths.has(item.fullPath)) item[field] = value || fallback(item);
@@ -201,13 +212,18 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     event.preventDefault();
     const requestedPath = pathInput.value.trim();
     if (!requestedPath || busy) return;
+    const requestGeneration = generation;
     setBusy(true, true);
+    inspectionId = '';
+    items = [];
+    selectedUnitKeys.clear();
     setMessage('Inspecting files and audio tracks...');
     try {
       const data = await apiFetch('/api/queue/inspect', {
         method: 'POST',
         body: JSON.stringify({ path: requestedPath }),
       });
+      if (requestGeneration !== generation || !batchKey) return;
       if (!data.found) {
         setMessage('No new supported files were found.');
         return;
@@ -232,7 +248,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       dialog.showModal();
       if (panelBounds) {
         const dialogWidth = `${Math.min(panelBounds.width, window.innerWidth - 18)}px`;
-        const dialogHeight = `${Math.min(panelBounds.height, window.innerHeight - 18)}px`;
+        const dialogHeight = `${Math.min(Math.max(panelBounds.height, 480), window.innerHeight - 18)}px`;
         dialog.style.width = dialogWidth;
         dialog.style.minWidth = dialogWidth;
         dialog.style.maxWidth = dialogWidth;
@@ -241,15 +257,15 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         dialog.style.maxHeight = dialogHeight;
       }
     } catch (error) {
-      setMessage(error.message, true);
+      if (requestGeneration === generation) setMessage(error.message, true);
     } finally {
-      setBusy(false);
-      renderItems();
+      if (requestGeneration === generation) { setBusy(false); renderItems(); }
     }
   }
 
   async function append() {
     if (!inspectionId || !selectedUnitKeys.size || busy) return;
+    const requestGeneration = generation;
     setBusy(true);
     try {
       const selectedFilePaths = getSelectedFilePaths();
@@ -267,6 +283,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
           })),
         }),
       });
+      if (requestGeneration !== generation || !batchKey) return;
       closeDialog();
       setMessage(data.added
         ? `Added ${data.added} configured file${data.added === 1 ? '' : 's'} to this batch.`
@@ -277,15 +294,19 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       selectedUnitKeys.clear();
       if (data.state) onState(data.state);
     } catch (error) {
-      setMessage(error.message, true);
+      if (requestGeneration === generation) setMessage(error.message, true);
     } finally {
-      setBusy(false);
+      if (requestGeneration === generation) setBusy(false);
     }
   }
 
   form.addEventListener('submit', inspect);
   addButton.addEventListener('click', append);
   cancelButton.addEventListener('click', closeDialog);
+  dialog.addEventListener('cancel', event => {
+    event.preventDefault();
+    if (!busy) closeDialog();
+  });
   selectAllButton.addEventListener('click', () => {
     selectedUnitKeys = new Set(getSelectionUnits().map(unit => unit.key));
     renderItems();
@@ -382,6 +403,18 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     render(state) {
       const active = Boolean(state?.active);
       panel.hidden = !active;
+      const nextBatchKey = active ? JSON.stringify([state.startedAt, state.config?.sourceRoot]) : null;
+      if (nextBatchKey !== batchKey) {
+        batchKey = nextBatchKey;
+        generation += 1;
+        closeDialog();
+        inspectionId = '';
+        items = [];
+        selectedUnitKeys.clear();
+        setBusy(false);
+        setMessage('');
+        activeSourceRoot = '';
+      }
       if (!active) {
         closeDialog();
         activeSourceRoot = '';

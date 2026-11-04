@@ -1,3 +1,7 @@
+import { initTooltips } from './tooltips.js';
+
+initTooltips();
+
 import { initThemedControls } from './themed-controls.js';
 import { createActiveQueueAdder } from './active-queue-add.js';
 import { buildQueueSelectionUnits } from './queue-units.js';
@@ -480,7 +484,7 @@ function renderQueue(queue, info = {}, active = false) {
     const audioSummary = audioTrackSummary(item.audioTracks, item.audioTrack);
     const audioTitle = escapeHtml(audioSummary.title);
     const audioAvailable = item.type === 'file' || (Array.isArray(item.audioTracks) && item.audioTracks.length)
-      ? `<span class="meta-chip audio-track-chip" title="${audioTitle}">available <strong>${escapeHtml(audioSummary.available)}</strong></span>`
+      ? `<span class="meta-chip audio-track-chip" data-tooltip="${audioTitle}">available <strong>${escapeHtml(audioSummary.available)}</strong></span>`
       : '';
     const deleteItems = Array.isArray(item.deleteSourceItems) && item.deleteSourceItems.length
       ? item.deleteSourceItems
@@ -491,14 +495,14 @@ function renderQueue(queue, info = {}, active = false) {
         }));
     const deleteControl = deleteItems.length === 1
       ? `<label class="meta-chip delete-source-chip"><input type="checkbox" class="delete-source-check" data-delete-source-path="${escapeHtml(deleteItems[0].fullPath)}" ${deleteItems[0].deleteSource ? 'checked' : ''} ${active && itemIndex === 0 ? 'disabled' : ''}> delete source</label>`
-      : `<details class="delete-source-group"><summary>delete source ${deleteItems.filter(entry => entry.deleteSource).length}/${deleteItems.length}</summary><div class="delete-source-group-list">${deleteItems.map(entry => `<label><input type="checkbox" class="delete-source-check" data-delete-source-path="${escapeHtml(entry.fullPath)}" ${entry.deleteSource ? 'checked' : ''}> <span title="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span></label>`).join('')}</div></details>`;
+      : `<details class="delete-source-group"><summary>delete source ${deleteItems.filter(entry => entry.deleteSource).length}/${deleteItems.length}</summary><div class="delete-source-group-list">${deleteItems.map(entry => `<label><input type="checkbox" class="delete-source-check" data-delete-source-path="${escapeHtml(entry.fullPath)}" ${entry.deleteSource ? 'checked' : ''}> <span data-tooltip="${escapeHtml(entry.name)}">${escapeHtml(entry.name)}</span></label>`).join('')}</div></details>`;
     const isActivePending = active && itemIndex > 0;
     const isReorderable = isEditable || isActivePending;
     const dragHandle = isReorderable
-      ? `<button type="button" class="queue-drag-handle" draggable="true" data-drag-key="${escapeHtml(item.key)}" aria-label="Drag to reorder" title="Drag to reorder">::</button>`
+      ? `<button type="button" class="queue-drag-handle" draggable="true" data-drag-key="${escapeHtml(item.key)}" aria-label="Drag to reorder" data-tooltip="Drag to reorder">::</button>`
       : '';
     const removeControl = isEditable
-      ? `<button type="button" class="queue-remove-btn" data-remove-key="${escapeHtml(item.key)}" aria-label="Remove from queue" title="Remove from queue">X</button>`
+      ? `<button type="button" class="queue-remove-btn" data-remove-key="${escapeHtml(item.key)}" aria-label="Remove from queue" data-tooltip="Remove from queue">X</button>`
       : '';
     const dragClasses = [
       'list-item',
@@ -520,7 +524,7 @@ function renderQueue(queue, info = {}, active = false) {
           <div class="queue-meta">
             ${metaChips}
             <span class="meta-chip">tune <strong>${escapeHtml(item.tune || 'film')}</strong></span>
-            <span class="meta-chip" title="${audioTitle}">audio <strong>${escapeHtml(audioSummary.selected)}</strong></span>
+            <span class="meta-chip" data-tooltip="${audioTitle}">audio <strong>${escapeHtml(audioSummary.selected)}</strong></span>
             ${audioAvailable}
             <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.subtitle)}</strong></span>
             ${deleteControl}
@@ -642,6 +646,9 @@ function render(state, options = {}) {
     els.formError.textContent = '';
   }
   const queueLoading = queueScanInFlight || state.scan?.inProgress === true;
+  els.queueList.inert = queueLoading;
+  els.queueTools.inert = queueLoading;
+  for (const input of [els.bulkTune, els.bulkAudioTrack, els.bulkSaveTo]) { if (input) input.disabled = active || queueLoading; }
   [
     els.sourceRoot,
     els.outRoot,
@@ -671,9 +678,9 @@ function render(state, options = {}) {
   els.stopAfterBtn.textContent = gracefulStopRequested ? 'Disable' : 'Enable';
   els.stopAfterBtn.className = `ghost-btn small-btn stop-after-btn ${gracefulStopRequested ? 'stop-after-disable' : 'stop-after-enable'}`;
   els.stopBtn.disabled = !active;
-  els.applyTuneBtn.disabled = active || selectedTargets.size === 0;
-  els.applySaveBtn.disabled = active || selectedTargets.size === 0;
-  els.applyAudioTrackBtn.disabled = active || selectedTargets.size === 0;
+  els.applyTuneBtn.disabled = active || queueLoading || selectedTargets.size === 0;
+  els.applySaveBtn.disabled = active || queueLoading || selectedTargets.size === 0;
+  els.applyAudioTrackBtn.disabled = active || queueLoading || selectedTargets.size === 0;
   els.vacuumBtn.disabled = active;
 }
 
@@ -718,12 +725,12 @@ function renderQueueLoadProgress(scan = null) {
 async function apiFetch(url, options = {}) {
   const token = getToken();
   const response = await fetch(url, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -745,7 +752,9 @@ async function fetchFullQueue() {
   if (queueFetchInFlight) return;
   queueFetchInFlight = true;
   try {
+    const startedAt = lastState?.startedAt;
     const data = await apiFetch('/api/queue');
+    if (lastState?.active || lastState?.scan?.inProgress || lastState?.startedAt !== startedAt) return;
     setFullQueue(data.queue || []);
     if (data.state) render(data.state);
   } finally {
@@ -758,7 +767,9 @@ async function fetchNextActiveQueuePage() {
   if (!lastState?.active || activeQueueFetchInFlight || !total || activeQueue.length >= total) return;
   activeQueueFetchInFlight = true;
   try {
+    const startedAt = lastState.startedAt, order = JSON.stringify(activeQueue.map(item => item.fullPath));
     const data = await apiFetch(`/api/queue?offset=${activeQueue.length}&limit=${ACTIVE_QUEUE_PAGE_SIZE}`);
+    if (!lastState?.active || lastState.startedAt !== startedAt || JSON.stringify(activeQueue.map(item => item.fullPath)) !== order) return;
     activeQueue = mergeQueueItems(activeQueue, data.queue || []);
     if (data.state) {
       lastState = { ...lastState, ...data.state };
@@ -840,7 +851,8 @@ function openEvents() {
   eventSource.onmessage = event => {
     const nextState = JSON.parse(event.data);
     if (nextState.active) {
-      if (!lastState?.active || !activeQueue.length || Number(nextState.queueInfo?.total || 0) !== Number(lastState?.queueInfo?.total || 0)) {
+      const prefixChanged = (nextState.queue || []).some((item, index) => activeQueue[index]?.fullPath !== item.fullPath);
+      if (!lastState?.active || nextState.startedAt !== lastState.startedAt || !activeQueue.length || prefixChanged || Number(nextState.queueInfo?.total || 0) !== Number(lastState?.queueInfo?.total || 0)) {
         resetActiveQueue(nextState.queue || []);
       } else {
         activeQueue = mergeQueueItems(activeQueue, nextState.queue || []);
@@ -861,7 +873,7 @@ function openEvents() {
     }
   };
   eventSource.onerror = () => {
-    closeEvents();
+    // EventSource retries transient connection failures with the same authenticated URL.
     els.heroMetaText.textContent = 'Live updates disconnected. Refresh or log in again.';
     els.heroMeta.setAttribute('data-full-text', 'Live updates disconnected. Refresh or log in again.');
   };

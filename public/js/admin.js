@@ -1,3 +1,7 @@
+import { initTooltips } from './tooltips.js';
+
+initTooltips();
+
 const CLIENT_CONFIG = globalThis.FFMPEG_WEBAPP_CLIENT_CONFIG;
 
 const els = {
@@ -77,11 +81,11 @@ function setText(el, value) {
 
 async function apiFetch(url, options = {}) {
   const response = await fetch(url, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
-    ...options,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

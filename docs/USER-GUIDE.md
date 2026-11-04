@@ -117,7 +117,7 @@ Each row shows the selected audio stream and every stream reported by FFprobe, i
 
 Language choices are resolved independently for every selected file in both the normal queue editor and this active-run dialog. This handles files whose language indexes are swapped. If the selected language is absent from a file, that file uses track `0`.
 
-Press `Add to Queue` to append only the selected, configured rows in their displayed order. Inspections expire after ten minutes and are single-use.
+Press `Add to Queue` to append only the selected, configured rows in their displayed order. Inspections expire after ten minutes, belong to the batch that created them, and are consumed only after a successful addition. A rejected configuration can be corrected and retried without rescanning.
 
 - Existing queue paths are ignored, so the same file is not added twice.
 - The staging folder and paths outside the active source root are rejected.
@@ -215,7 +215,7 @@ The localhost-only admin panel at `/admin` can:
 
 The configured authorized user is intentionally protected in the admin UI and admin API.
 
-Saving the app version remains a manual admin action. The same submitted value is stored in SQLite and mirrored to the repository-root `VERSION` file. There is no automatic version increment. On a fresh database only, the initial `app_version` value is seeded by reading `VERSION`; an existing database value always wins on boot.
+Saving the app version remains a manual admin action. The same submitted value is stored in SQLite and mirrored to the repository-root `VERSION` file. There is no automatic version increment. At startup, a nonempty `VERSION` file synchronizes the stored display version so a pulled release is shown after restart. If the file is absent or empty, the stored value is preserved.
 
 Admin resource cards refresh every second. CPU percentage is normalized to the full machine capacity, so it remains in the human-readable `0-100%` range.
 
@@ -224,3 +224,11 @@ Admin resource cards refresh every second. CPU percentage is normalized to the f
 - The active queue API and browser use 50-item pages so large batches do not flood every live update.
 - The editable queue is fetched in full because folder grouping and exact drag reordering require the whole order, but only 50 queue cards are rendered initially.
 - Database size is based on the SQLite file size reported from SQLite page statistics.
+
+## Dashboard controls
+
+Tune and audio dropdowns support mouse selection and keyboard navigation inside the inspection dialog. Enter accepts the highlighted filtered option; Escape closes the choices first. Hints use the dashboard theme.
+
+Live progress preserves the inspection draft. If that batch ends or another batch replaces it, its preview closes and late inspection responses are ignored. Controls are temporarily locked while additions are submitted. The mobile editor reserves room for its file list. Temporary live-update disconnections reconnect automatically.
+
+Account deletion removes unused accounts and their saved sessions and settings. Accounts with encoding history are retained so historical run statistics are preserved.
