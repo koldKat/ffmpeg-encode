@@ -54,7 +54,7 @@ test('static assets revalidate with content ETags', async t => {
   assert.equal(second.body.length, 0);
 });
 
-test('saved sessions hide login until authentication resolves', () => {
+test('saved sessions hide login until authentication resolves', async () => {
   const html = read('public/index.html');
   const css = read('public/css/style.css');
   const app = read('public/js/app.js');
@@ -64,5 +64,20 @@ test('saved sessions hide login until authentication resolves', () => {
   assert.match(html, /id="session-screen"[^>]*role="status"/);
   assert.match(css, /\.restoring-session #login-screen\s*\{\s*display: none/);
   assert.match(app, /document\.documentElement\.classList\.remove\('restoring-session'\)/);
-  assert.match(app, /showScreen\('app'\);\s*const state = await apiFetch\('\/api\/state'\)/);
+  const start = app.indexOf('async function hydrateApp() {');
+  const hydrate = app.slice(start, app.indexOf('\n}\n', start)+2);
+  let resolveState;
+  const state = new Promise(resolve => { resolveState=resolve; });
+  const screens=[];
+  let opened=0;
+  const pending = require('node:vm').runInNewContext(hydrate+';hydrateApp();', {
+    viewer:null,
+    apiFetch:async url=>url==='/api/me'?{username:'Saved',canUseApp:true}:state,
+    setAuthorizedUsername(){},showScreen:name=>screens.push(name),render(){},
+    fetchFullQueue:async()=>{},setFullQueue(){},resetActiveQueue(){},clearQueueSelection(){},openEvents(){opened++;},
+  });
+  await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(screens,[], 'Dashboard stays covered while its initial data is pending');
+  resolveState({active:true});await pending;
+  assert.deepEqual(screens,['app']);assert.equal(opened,1);
 });

@@ -1697,3 +1697,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   pointer-events: none;
 }
 .dashboard-tooltip[hidden] { display: none; }
+
+/* Keep startup recovery inactive until a retry is needed. */
+#app-startup-retry[hidden] { display: none !important; }

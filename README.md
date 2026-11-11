@@ -159,3 +159,5 @@ npm test
 When behavior, UI workflows, API routes, persistence, queue handling, encoding flow, or deployment assumptions change, update the relevant document in `docs/` with the code change.
 
 Inspection editors support themed dropdowns and tooltips on desktop and mobile. Drafts survive live progress updates, while stale requests from a finished or replaced batch are discarded. Encoding staging files use unique names so they cannot overwrite queued source files.
+
+Startup recovery retries temporary loading failures after 2, 5 and 10 seconds, waits for reconnection when offline, then offers a manual retry. Startup requests time out after 20 seconds. Temporary failures preserve the saved login. Recovery stops once the dashboard or login screen is ready.

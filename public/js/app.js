@@ -726,6 +726,7 @@ async function apiFetch(url, options = {}) {
   const token = getToken();
   const response = await fetch(url, {
     ...options,
+    signal: options.signal ?? (globalThis.appStartup?.pending ? AbortSignal.timeout(20000) : undefined),
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -734,7 +735,9 @@ async function apiFetch(url, options = {}) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || 'Request failed');
+    const error = new Error(data.error || 'Request failed');
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -929,7 +932,6 @@ async function hydrateApp() {
     showScreen('blocked');
     return;
   }
-  showScreen('app');
   const state = await apiFetch('/api/state');
   render(state);
   if (!state.active && (state.queueInfo?.total || 0) > 0) {
@@ -939,6 +941,7 @@ async function hydrateApp() {
     if (!state.active) resetActiveQueue([]);
     clearQueueSelection();
   }
+  showScreen('app');
   openEvents();
 }
 
@@ -946,13 +949,15 @@ async function boot() {
   const token = getToken();
   if (!token) {
     showScreen('login');
+    globalThis.appStartup?.ready();
     return;
   }
   try {
     await hydrateApp();
-  } catch {
-    clearToken();
-    showScreen('login');
+    globalThis.appStartup?.ready();
+  } catch (error) {
+    if (error.status === 401) { clearToken(); showScreen('login'); globalThis.appStartup?.ready(); }
+    else { showScreen('session'); globalThis.appStartup?.fail(); }
   }
 }
 
@@ -1294,4 +1299,4 @@ activeQueueAdder = createActiveQueueAdder({
   },
 });
 
-boot();
+boot().catch(() => globalThis.appStartup?.fail());

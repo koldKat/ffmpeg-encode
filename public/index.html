@@ -21,11 +21,13 @@
     <div class="auth-card auth-card-narrow session-card">
       <p class="eyebrow">Session Found</p>
       <h1>Restoring dashboard</h1>
-      <p class="auth-copy">Checking your saved session…</p>
+      <p id="app-startup-message" class="auth-copy">Checking your saved session…</p>
+      <button id="app-startup-retry" class="ghost-btn small-btn" type="button" hidden>Try again</button>
       <div class="session-progress" aria-hidden="true"></div>
     </div>
   </div>
 
+  <script src="/startup-recovery.js"></script>
   <div id="login-screen" class="auth-shell">
     <div class="auth-card">
       <p class="eyebrow">Remote Access Enabled</p>
