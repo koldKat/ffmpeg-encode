@@ -87,7 +87,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   const cancelButton = document.getElementById('active-queue-dialog-cancel');
   const addButton = document.getElementById('active-queue-dialog-add');
   let activeSourceRoot = '';
-  let activeTune = 'film';
+  let activeTune = 'none';
   let inspectionId = '';
   let items = [];
   let selectedUnitKeys = new Set();
@@ -425,7 +425,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         setMessage('');
         return;
       }
-      activeTune = state.config?.tune || 'film';
+      activeTune = state.config?.tune || 'none';
       const sourceRoot = state.config?.sourceRoot || '';
       if (sourceRoot !== activeSourceRoot) {
         activeSourceRoot = sourceRoot;

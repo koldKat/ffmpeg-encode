@@ -33,7 +33,7 @@ test('preserves saved queue items before newly discovered files', () => {
   }], { ...defaults, sourceRoot: '/source' });
   assert.deepEqual(queue.map(item => [item.fullPath, item.tune, item.audioTrack]), [
     ['/source/b.mkv', 'animation', 1],
-    ['/source/a.mkv', 'film', 0],
+    ['/source/a.mkv', 'none', 0],
   ]);
 });
 
@@ -44,4 +44,13 @@ test('saved configurations gain default niceness and retain a fixed internal siz
   assert.equal(queue.normalizeConfig({ nice: 25 }).nice, 19);
   assert.equal(queue.normalizeConfig({ nice: 'invalid' }).nice, 15);
   assert.equal(queue.normalizeConfig({ overheadPct: 90 }).overheadPct, 1);
+});
+
+
+test('saved x264 settings migrate to compatible x265 configuration and queue tunes', () => {
+  const queue = model();
+  const config = queue.normalizeConfig({ tune: 'film', x264Profile: 'high', x264Level: '4.1' });
+  assert.equal(config.tune, 'none');
+  assert.equal(queue.createQueueItem('/source/a.mkv', 1, config, { tune: 'stillimage' }).tune, 'none');
+  assert.equal(queue.createQueueItem('/source/a.mkv', 1, config, { tune: 'animation' }).tune, 'animation');
 });

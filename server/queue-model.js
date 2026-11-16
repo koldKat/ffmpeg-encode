@@ -1,3 +1,4 @@
+const { normalizeTune } = require('./encoding-options');
 const { normalizeNice } = require('./encoder-process');
 
 function clampNonNegative(value, fallback = 0) {
@@ -52,12 +53,13 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
   }
 
   function normalizeConfig(rawConfig = {}) {
+    const { x264Profile, x264Level, ...compatibleConfig } = rawConfig;
     return {
       ...defaultConfig(),
-      ...rawConfig,
+      ...compatibleConfig,
       sourceRoot: expandHome(rawConfig.sourceRoot || defaults.sourceRoot),
       outRoot: expandHome(rawConfig.outRoot || defaults.outRoot),
-      tune: String(rawConfig.tune || defaults.tune),
+      tune: normalizeTune(rawConfig.tune || defaults.tune),
       preset: String(rawConfig.preset || defaults.preset),
       mbPerMin: clampNonNegative(rawConfig.mbPerMin, defaults.mbPerMin),
       mbStep: clampNonNegative(rawConfig.mbStep, defaults.mbStep),
@@ -66,8 +68,6 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
       overheadPct: defaults.overheadPct,
       nice: normalizeNice(rawConfig.nice, defaults.nice),
       ffmpegLoglevel: String(rawConfig.ffmpegLoglevel || defaults.ffmpegLoglevel),
-      x264Profile: String(rawConfig.x264Profile || defaults.x264Profile),
-      x264Level: String(rawConfig.x264Level || defaults.x264Level),
       encThreads: clampNonNegative(rawConfig.encThreads, defaults.encThreads),
       deleteSource: rawConfig.deleteSource === true,
     };
@@ -81,7 +81,7 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
       path: path.dirname(fullPath),
       fullPath,
       status: overrides.status || 'pending',
-      tune: String(overrides.tune || config.tune || defaults.tune),
+      tune: normalizeTune(overrides.tune || config.tune || defaults.tune),
       saveTo: expandHome(overrides.saveTo || path.dirname(fullPath)),
       audioTrack: normalizeAudioTrack(overrides.audioTrack, 0),
       audioTracks: normalizeAudioTracks(overrides.audioTracks),
@@ -95,7 +95,7 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
       .filter(item => !['encoded', 'skipped'].includes(item.status))
       .map(item => ({
         fullPath: expandHome(item.fullPath),
-        tune: String(item.tune || defaults.tune),
+        tune: normalizeTune(item.tune || defaults.tune),
         saveTo: expandHome(item.saveTo || path.dirname(item.fullPath)),
         audioTrack: normalizeAudioTrack(item.audioTrack, 0),
         audioTracks: normalizeAudioTracks(item.audioTracks),

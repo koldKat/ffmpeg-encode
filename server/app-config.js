@@ -19,7 +19,7 @@ const APP_CONFIG = Object.freeze({
   encodingDefaults: Object.freeze({
     sourceRoot: '.',
     outRoot: '~/Videos',
-    tune: 'film',
+    tune: 'none',
     preset: 'slow',
     mbPerMin: 10,
     mbStep: 50,
@@ -28,8 +28,6 @@ const APP_CONFIG = Object.freeze({
     overheadPct: 1, // Internal size safety margin.
     nice: 15,
     ffmpegLoglevel: 'error',
-    x264Profile: 'high',
-    x264Level: '4.1',
     encThreads: 0,
     deleteSource: false,
   }),

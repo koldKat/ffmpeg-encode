@@ -12,12 +12,13 @@ Test with disposable media and verify all source, staging, and destination paths
 
 - Recursive video discovery for MP4, MKV, AVI, MOV, WMV, FLV, MPEG, MPG, and M4V files
 - Editable queue with folder grouping, selection, removal, drag reordering, and persisted queue plans
-- Per-file or per-folder x264 tune, destination folder, and audio language/track selection
+- Per-file or per-folder x265 tune, destination folder, and audio language/track selection
 - Opt-in source deletion globally or per file, persisted with the queue plan
 - Non-destructive same-path MP4 output with generated files excluded from later scans
 - Audio stream metadata discovered with `ffprobe`
-- Configurable x264 preset, target MB per minute, size rounding, audio bitrate, bitrate floor, CPU niceness, and thread count
-- Two-pass H.264 encoding with AAC audio
+- 10-bit H.265/HEVC output with two-pass bitrate targeting and dark-scene adaptive quantization (AQ mode 3)
+- Configurable x265 preset, target MB per minute, size rounding, audio bitrate, bitrate floor, CPU niceness, and thread count
+- AAC stereo audio in MP4 output (HEVC-compatible playback required)
 - Cross-filesystem staging and promotion with live copy progress
 - Live file progress, overall progress, speed, ETA, savings, run log, and completed-file panels
 - Pause/resume, immediate stop, and stop-after-current controls

@@ -54,7 +54,7 @@ export function buildQueueSelectionUnits(queue = [], sourceRoot = '') {
         subtitle: item.path,
         hoverPath: item.path,
         filePaths: [item.fullPath],
-        tune: item.tune || 'film',
+        tune: item.tune || 'none',
         saveTo: item.saveTo || item.path,
         audioTrack: item.audioTrack ?? 0,
         audioTracks: item.audioTracks || [],
@@ -89,7 +89,7 @@ export function buildQueueSelectionUnits(queue = [], sourceRoot = '') {
       units.push(unit);
     }
     unit.filePaths.push(item.fullPath);
-    unit.tuneValues.add(item.tune || 'film');
+    unit.tuneValues.add(item.tune || 'none');
     unit.saveValues.add(item.saveTo || item.path);
     unit.audioTrackValues.add(item.audioTrack ?? 0);
     unit.audioTrackLists.push(item.audioTracks || []);

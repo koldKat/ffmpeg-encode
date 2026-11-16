@@ -100,7 +100,7 @@
             </label>
             <label>
               <span>Tune</span>
-              <input type="text" id="tune" list="tune-options" placeholder="film">
+              <input type="text" id="tune" list="tune-options" placeholder="none">
             </label>
             <label>
               <span>Preset</span>
@@ -254,7 +254,7 @@
                 <span>Apply save folder</span>
               </div>
               <div class="queue-bulk-fields">
-                <input type="text" id="bulk-tune" list="tune-options" placeholder="film" aria-label="Apply tune">
+                <input type="text" id="bulk-tune" list="tune-options" placeholder="none" aria-label="Apply tune">
                 <select id="bulk-audio-track" aria-label="Apply audio language or track">
                   <option value="0">Track 0 (default)</option>
                 </select>
@@ -270,10 +270,9 @@
               </div>
             </div>
             <datalist id="tune-options">
-              <option value="film"></option>
+              <option value="none"></option>
               <option value="animation"></option>
               <option value="grain"></option>
-              <option value="stillimage"></option>
               <option value="fastdecode"></option>
               <option value="zerolatency"></option>
               <option value="psnr"></option>
@@ -333,7 +332,7 @@
                   <span>Apply save folder</span>
                 </div>
                 <div class="queue-bulk-fields">
-                  <input type="text" id="active-dialog-tune" list="tune-options" placeholder="film">
+                  <input type="text" id="active-dialog-tune" list="tune-options" placeholder="none">
                   <select id="active-dialog-audio" aria-label="Apply audio language or track">
                     <option value="0">Track 0 (default)</option>
                   </select>

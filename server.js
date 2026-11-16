@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const { normalizeTune } = require('./server/encoding-options');
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -879,12 +880,11 @@ function buildFfmpegArgs({ inputPath, stagePath, vbKbps, config, pass, passlog, 
     '-map_metadata', '-1',
     '-map_chapters', '-1',
     '-sn',
-    '-c:v', 'libx264',
+    '-c:v', 'libx265',
     '-preset', config.preset,
-    '-tune', config.tune,
-    '-profile:v', config.x264Profile,
-    '-level', config.x264Level,
-    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'main10',
+    '-pix_fmt', 'yuv420p10le',
+    '-tag:v', 'hvc1',
     '-b:v', `${vbKbps}k`
   );
 
@@ -892,7 +892,11 @@ function buildFfmpegArgs({ inputPath, stagePath, vbKbps, config, pass, passlog, 
     args.push('-threads', String(Number(config.encThreads)));
   }
 
-  args.push('-pass', String(pass), '-passlogfile', passlog);
+  const tune = normalizeTune(config.tune);
+  if (tune !== 'none') args.push('-tune', tune);
+  // libx265 owns its pass statistics; FFmpeg's generic -pass is insufficient.
+  const statsPath = passlog.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+  args.push('-x265-params', `pass=${pass}:stats=${statsPath}:aq-mode=3`);
 
   if (pass === 1) {
     args.push('-f', 'mp4', '-an', '/dev/null');
@@ -977,6 +981,7 @@ async function removeIfExists(filePath) {
 
 async function cleanupPasslog(base) {
   await Promise.all([
+    ...['', '.cutree', '.temp', '.cutree.temp'].map(suffix => removeIfExists(`${base}${suffix}`)),
     removeIfExists(`${base}-0.log`),
     removeIfExists(`${base}-0.log.mbtree`),
     removeIfExists(`${base}.log`),
