@@ -40,13 +40,13 @@ test('resets retryable statuses to pending when a new run starts', () => {
     requestedSourceRoot: '/media/source',
     persistedSourceRoot: '/media/source',
     persistedQueue: [
-      { fullPath: '/media/source/failed.mkv', status: 'failed', tune: 'animation' },
+      { fullPath: '/media/source/failed.mkv', status: 'failed', encoder: 'x264' },
       { fullPath: '/media/source/stopped.mkv', status: 'stopped', audioTrack: 1 },
     ],
     currentSourceRoot: '/media/source',
     currentQueue: [],
   }), [
-    { fullPath: '/media/source/failed.mkv', status: 'pending', tune: 'animation' },
+    { fullPath: '/media/source/failed.mkv', status: 'pending', encoder: 'x264' },
     { fullPath: '/media/source/stopped.mkv', status: 'pending', audioTrack: 1 },
   ]);
 });

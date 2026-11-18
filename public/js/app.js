@@ -38,7 +38,7 @@ const els = {
   sourceRootList: document.getElementById('path-suggestions-source'),
   outRoot: document.getElementById('out-root'),
   outRootList: document.getElementById('path-suggestions-out'),
-  tune: document.getElementById('tune'),
+  encoder: document.getElementById('encoder'),
   preset: document.getElementById('preset'),
   mbPerMin: document.getElementById('mb-per-min'),
   mbStep: document.getElementById('mb-step'),
@@ -94,11 +94,11 @@ const els = {
   queueList: document.getElementById('queue-list'),
   queueKicker: document.getElementById('queue-kicker'),
   queueTools: document.getElementById('queue-tools'),
-  bulkTune: document.getElementById('bulk-tune'),
+  bulkEncoder: document.getElementById('bulk-encoder'),
   bulkSaveTo: document.getElementById('bulk-save-to'),
   bulkAudioTrack: document.getElementById('bulk-audio-track'),
   bulkSaveToList: document.getElementById('path-suggestions-save'),
-  applyTuneBtn: document.getElementById('apply-tune-btn'),
+  applyEncoderBtn: document.getElementById('apply-encoder-btn'),
   applySaveBtn: document.getElementById('apply-save-btn'),
   applyAudioTrackBtn: document.getElementById('apply-audio-track-btn'),
   recentList: document.getElementById('recent-list'),
@@ -169,7 +169,7 @@ function setConfigInputs(config, force = false) {
   if (hydratedConfig && !force) return;
   els.sourceRoot.value = config.sourceRoot || '.';
   els.outRoot.value = config.outRoot || '~/Videos';
-  els.tune.value = config.tune || 'none';
+  els.encoder.value = config.encoder || 'x265';
   els.preset.value = config.preset || 'slow';
   els.mbPerMin.value = config.mbPerMin ?? 10;
   els.mbStep.value = config.mbStep ?? 50;
@@ -185,7 +185,7 @@ function configFromForm() {
   return {
     sourceRoot: els.sourceRoot.value.trim(),
     outRoot: els.outRoot.value.trim(),
-    tune: els.tune.value.trim(),
+    encoder: els.encoder.value.trim(),
     preset: els.preset.value.trim(),
     mbPerMin: Number(els.mbPerMin.value),
     mbStep: Number(els.mbStep.value),
@@ -411,7 +411,7 @@ function getQueueRenderKey(state) {
   const queueKey = (queue || []).map(item => [
     item.fullPath,
     item.status || '',
-    item.tune || '',
+    item.encoder || '',
     item.saveTo || '',
     item.audioTrack ?? 0,
     item.deleteSource === true ? '1' : '0',
@@ -459,7 +459,7 @@ function renderQueue(queue, info = {}, active = false) {
     subtitle: item.path,
     hoverPath: item.path,
     filePaths: [item.fullPath],
-    tune: item.tune || 'none',
+    encoder: item.encoder || 'x265',
     saveTo: item.saveTo || item.path,
     audioTrack: item.audioTrack ?? 0,
     audioTracks: item.audioTracks || [],
@@ -523,7 +523,7 @@ function renderQueue(queue, info = {}, active = false) {
           </div>
           <div class="queue-meta">
             ${metaChips}
-            <span class="meta-chip">tune <strong>${escapeHtml(item.tune || 'none')}</strong></span>
+            <span class="meta-chip">encoder <strong>${escapeHtml(item.encoder || 'x265')}</strong></span>
             <span class="meta-chip" data-tooltip="${audioTitle}">audio <strong>${escapeHtml(audioSummary.selected)}</strong></span>
             ${audioAvailable}
             <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.subtitle)}</strong></span>
@@ -648,11 +648,11 @@ function render(state, options = {}) {
   const queueLoading = queueScanInFlight || state.scan?.inProgress === true;
   els.queueList.inert = queueLoading;
   els.queueTools.inert = queueLoading;
-  for (const input of [els.bulkTune, els.bulkAudioTrack, els.bulkSaveTo]) { if (input) input.disabled = active || queueLoading; }
+  for (const input of [els.bulkEncoder, els.bulkAudioTrack, els.bulkSaveTo]) { if (input) input.disabled = active || queueLoading; }
   [
     els.sourceRoot,
     els.outRoot,
-    els.tune,
+    els.encoder,
     els.preset,
     els.mbPerMin,
     els.mbStep,
@@ -678,7 +678,7 @@ function render(state, options = {}) {
   els.stopAfterBtn.textContent = gracefulStopRequested ? 'Disable' : 'Enable';
   els.stopAfterBtn.className = `ghost-btn small-btn stop-after-btn ${gracefulStopRequested ? 'stop-after-disable' : 'stop-after-enable'}`;
   els.stopBtn.disabled = !active;
-  els.applyTuneBtn.disabled = active || queueLoading || selectedTargets.size === 0;
+  els.applyEncoderBtn.disabled = active || queueLoading || selectedTargets.size === 0;
   els.applySaveBtn.disabled = active || queueLoading || selectedTargets.size === 0;
   els.applyAudioTrackBtn.disabled = active || queueLoading || selectedTargets.size === 0;
   els.vacuumBtn.disabled = active;
@@ -1153,7 +1153,7 @@ els.startBtn.addEventListener('click', startJob);
 els.pauseBtn.addEventListener('click', togglePauseJob);
 els.stopAfterBtn.addEventListener('click', stopAfterCurrentFile);
 els.stopBtn.addEventListener('click', stopJob);
-els.applyTuneBtn.addEventListener('click', () => applyQueuePatch({ tune: els.bulkTune.value.trim() }));
+els.applyEncoderBtn.addEventListener('click', () => applyQueuePatch({ encoder: els.bulkEncoder.value.trim() }));
 els.applySaveBtn.addEventListener('click', () => applyQueuePatch({ saveTo: els.bulkSaveTo.value.trim() }));
 els.applyAudioTrackBtn.addEventListener('click', () => applyQueuePatch({ audioTrack: els.bulkAudioTrack.value.trim() }));
 els.deleteAllSources.addEventListener('change', () => {

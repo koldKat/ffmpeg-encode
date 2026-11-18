@@ -12,7 +12,7 @@ Test with disposable media and verify all source, staging, and destination paths
 
 - Recursive video discovery for MP4, MKV, AVI, MOV, WMV, FLV, MPEG, MPG, and M4V files
 - Editable queue with folder grouping, selection, removal, drag reordering, and persisted queue plans
-- Per-file or per-folder x265 tune, destination folder, and audio language/track selection
+- Per-file or per-folder x264 (H.264) / x265 (HEVC) selection, destination folder, and audio language/track selection
 - Opt-in source deletion globally or per file, persisted with the queue plan
 - Non-destructive same-path MP4 output with generated files excluded from later scans
 - Audio stream metadata discovered with `ffprobe`
@@ -72,7 +72,7 @@ The SQLite database is created automatically as `database.sqlite`. Runtime datab
 2. Enter a source folder and staging folder.
 3. Adjust encoding settings if needed.
 4. Select **Load File Queue** to scan and review files.
-5. Edit queue order, tune, audio selection, or final save folders.
+5. Edit queue order, encoder, audio selection, or final save folders.
 6. Select **Start Encode Job**.
 
 Start operates only on the non-empty queue shown by the app. It never performs an implicit folder scan; use **Load File Queue** whenever you want to discover files.
@@ -105,7 +105,7 @@ If staging and destination folders are on different filesystems, promotion falls
 
 Files directly inside the source root are editable individually. Files in subfolders are grouped into folder units for bulk operations while preserving their internal order.
 
-Settings and queue plans are stored per user and server hostname. Restarting the server restores remaining queue items, order, tune overrides, audio choices, and destination folders. Successfully encoded and skipped files are removed from the saved plan; failed files remain available for retry.
+Settings and queue plans are stored per user and server hostname. Restarting the server restores remaining queue items, order, encoder overrides, audio choices, and destination folders. Successfully encoded and skipped files are removed from the saved plan; failed files remain available for retry.
 
 Only one encode batch can run at a time. An active FFmpeg process is stopped when the server receives `SIGINT` or `SIGTERM`.
 

@@ -52,7 +52,7 @@ Modules accept their dependencies at construction time where they need environme
 
 - Linux or another Unix-like system with process-group signals
 - Node.js 18 or newer
-- `ffmpeg` with `libx264` and AAC support
+- `ffmpeg` with `libx264`, `libx265`, and AAC support
 - `ffprobe`
 - `better-sqlite3`
 
@@ -80,8 +80,8 @@ Only one batch can run across the whole server. Media probing during an editable
 | --- | ---: | --- |
 | `sourceRoot` | `.` | Folder recursively scanned for source videos |
 | `outRoot` | `~/Videos` | Staging tree used before final promotion |
-| `tune` | `film` | x264 tune |
-| `preset` | `slow` | x264 preset |
+| `encoder` | `x265` | Video encoder: `x264` or `x265` |
+| `preset` | `slow` | Preset shared by both video encoders |
 | `mbPerMin` | `10` | Raw target megabytes per video minute |
 | `mbStep` | `50` | Target-size rounding step in decimal MB |
 | `audioKbit` | `192` | AAC audio bitrate in kbit/s |
@@ -89,8 +89,6 @@ Only one batch can run across the whole server. Media probing during an editable
 | `overheadPct` | `1` | Fixed internal safety deduction from calculated video bitrate; submitted overrides are ignored |
 | `nice` | `15` | Encoder process niceness, clamped to integers from 0 to 19 |
 | `ffmpegLoglevel` | `error` | FFmpeg log level |
-| `x264Profile` | `high` | H.264 profile |
-| `x264Level` | `4.1` | H.264 level |
 | `encThreads` | `0` | Explicit FFmpeg threads; zero leaves it unset |
 | `deleteSource` | `false` | Global source-deletion selection and default for newly discovered files |
 
@@ -114,7 +112,7 @@ The browser serializes source-deletion mutations and waits for the mutation queu
 | `active` | Whether a run owns the encoder |
 | `stopRequested`, `stopAfterCurrent`, `paused` | Control flags |
 | `scan` | Source path, staging path, and discovered count |
-| `currentFile` | File, pass, phase, progress, speed, ETA, sizes, tune, destination, and audio choice |
+| `currentFile` | File, pass, phase, progress, speed, ETA, sizes, encoder, destination, and audio choice |
 | `queue` | Public queue preview, not always the complete internal queue |
 | `queueInfo` | Public total, visible, and hidden counts |
 | `recentCompleted` | Successful filenames for the run |
@@ -144,7 +142,7 @@ An internal queue item resembles:
   "path": "/media/show",
   "fullPath": "/media/show/episode.mkv",
   "status": "pending",
-  "tune": "animation",
+  "encoder": "x264",
   "saveTo": "/media/encoded/show",
   "audioTrack": 1,
   "deleteSource": false,
@@ -189,7 +187,7 @@ Folder grouping is frontend presentation only. Root-level files are individual s
 
 Discovery is restricted to the active source root using both lexical and real-path containment, excludes the staging root, recursively includes the standard video extensions, resolves duplicate paths, and removes paths already present in the internal queue.
 
-The browser shows an indeterminate progress bar while the combined active-run discovery/probe request is pending, then presents inspected files in a modal that reuses the Queue panel's directory grouping, selection, bulk-apply, remove, and drag-order interaction model. Reordering a directory moves all underlying files while preserving their internal order. Both queue editors populate their audio selectors with numeric tracks and languages derived from FFprobe metadata. All inspected rows start selected; those checkboxes define both the bulk-action targets and the subset submitted for append. Each row exposes the full FFprobe audio-stream metadata so channel count is not mistaken for the number of selectable streams. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings, including `deleteSource`. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio languages are resolved independently per file, handling inconsistent language indexes; a missing language or numeric track falls back to track `0`. Blank tune and destination values fall back to the active tune and that file's source directory.
+The browser shows an indeterminate progress bar while the combined active-run discovery/probe request is pending, then presents inspected files in a modal that reuses the Queue panel's directory grouping, selection, bulk-apply, remove, and drag-order interaction model. Reordering a directory moves all underlying files while preserving their internal order. Both queue editors populate their audio selectors with numeric tracks and languages derived from FFprobe metadata. All inspected rows start selected; those checkboxes define both the bulk-action targets and the subset submitted for append. Each row exposes the full FFprobe audio-stream metadata so channel count is not mistaken for the number of selectable streams. `POST /api/queue/append` consumes the inspection token plus the resulting ordered subset and each row's stored settings, including `deleteSource`. It rechecks active-run ownership, inspection membership, current queue duplicates, and file existence at the synchronous mutation boundary. Audio languages are resolved independently per file, handling inconsistent language indexes; a missing language or numeric track falls back to track `0`. Blank encoder and destination values fall back to the active encoder and that file's source directory.
 
 The append coordinator immediately updates `counts.total`, scan and queue totals, the current-file denominator, derived progress, the persisted queue plan, and the active run snapshot. The runner loop reads `state.queue.length` on every iteration rather than retaining the original scan length, so appended entries are processed in the same run.
 
@@ -197,7 +195,7 @@ Before each `encodeFile()` call, the runner records `activeQueuePath`. `POST /ap
 
 ### Queue persistence
 
-Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed` while idle so their outcome is visible; all retryable items normalize to `pending` when a new run starts. Full path, tune, destination, audio index, audio metadata, and `deleteSource` are retained. The global deletion setting is stored in per-machine user settings; the per-file values are stored in the queue-plan JSON.
+Serialized plans store only existing paths and exclude `encoded` and `skipped`. Failed items remain marked `failed` while idle so their outcome is visible; all retryable items normalize to `pending` when a new run starts. Full path, encoder, destination, audio index, audio metadata, and `deleteSource` are retained. The global deletion setting is stored in per-machine user settings; the per-file values are stored in the queue-plan JSON.
 
 The runner saves the plan after skips, failures, successful encodes, edits, and run termination. It preserves remaining work, not pass-level execution state.
 
@@ -248,7 +246,7 @@ If neither queue is available, the endpoint returns `400` and does not scan the 
 
 `encodeFile()`:
 
-1. Resolves tune, destination, and numeric audio index.
+1. Resolves encoder, destination, and numeric audio index.
 2. Builds a unique hidden `.ffmpeg-stage-<uuid>.mp4` path in the source-relative directory under `outRoot`.
 3. Builds the final `.mp4` under the item's `saveTo`.
 4. Skips a final file newer than the source.
@@ -268,13 +266,19 @@ Per-file failures are recorded and processing continues. Immediate stop exits th
 
 ### FFmpeg behavior
 
-Both passes overwrite output, map only the first video stream, remove metadata and chapters, discard subtitles, encode `libx264`, apply configured x264 values, and report progress through `pipe:1`.
+Both passes overwrite output, map only the first video stream, remove metadata and chapters, discard subtitles, encode using the selected `libx264` or `libx265` path, and report progress through `pipe:1`.
 
 Pass 1 has no audio and writes MP4 output to `/dev/null`. Pass 2 optionally maps one audio stream, encodes AAC at the configured bitrate, forces two channels with `-ac 2`, and uses `+faststart`.
 
 The app does not preserve subtitles, chapters, attachments, source metadata, additional video streams, or multiple audio streams. Multichannel audio is downmixed to stereo.
 
 FFmpeg is detached for process-group signaling. Stderr retains only the final 12,000 characters. Recognized malformed-H.264 errors are summarized as input corruption; other failures use the last useful stderr line.
+
+### Video encoder selection
+
+The `encoder` setting accepts `x264` or `x265` globally and per queue item. Missing or invalid values normalize to `x265`; legacy tune settings are discarded. Queue editors, persisted plans, active-run additions, and current-file state carry the same setting. Each file captures its encoder before either pass begins.
+
+x264 uses H.264 High profile, 8-bit `yuv420p`, the `avc1` MP4 tag, and FFmpeg `-pass` / `-passlogfile`. x265 retains HEVC Main10, `yuv420p10le`, `hvc1`, dark-scene AQ mode 3, and native x265 pass statistics. Both passes use the same encoder and private pass-log path. No tune option is passed to either encoder.
 
 ## Size And Bitrate Calculations
 
@@ -389,11 +393,11 @@ All require authentication and the protected username.
 | `GET /api/queue` | optional `offset`, `limit` | Returns full or paged public queue and state |
 | `POST /api/queue` | `{ order: [fullPath...] }` | Reorders after exact membership validation |
 | `POST /api/queue` | `{ filePaths, remove: true }` | Removes queue entries, not disk files |
-| `POST /api/queue` | `{ filePaths, tune }` | Applies tune |
+| `POST /api/queue` | `{ filePaths, encoder }` | Applies encoder |
 | `POST /api/queue` | `{ filePaths, saveTo }` | Applies expanded destination |
 | `POST /api/queue` | `{ filePaths, audioTrack }` | Applies a numeric index or resolves language per file; unavailable choices fall back to track `0` |
 | `POST /api/queue/inspect` | `{ path }` | Discovers and probes append candidates; returns files, derived audio metadata, and a short-lived inspection token |
-| `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, tune, audioTrack, saveTo, deleteSource }] }` | Consumes an inspection and appends the ordered, individually configured subset |
+| `POST /api/queue/append` | `{ inspectionId, items: [{ fullPath, encoder, audioTrack, saveTo, deleteSource }] }` | Consumes an inspection and appends the ordered, individually configured subset |
 | `POST /api/queue/delete-source` | `{ filePaths, deleteSource, all }` | Persists global or per-file source deletion; the active file is immutable |
 | `POST /api/queue/reorder-active` | `{ order: [visibleFullPath...] }` | Reorders the loaded pending prefix while requiring the current encode to remain first |
 | `POST /api/start` | config object | Starts only an exact-root loaded/persisted non-empty queue; otherwise returns `400` |

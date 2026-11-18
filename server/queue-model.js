@@ -1,4 +1,4 @@
-const { normalizeTune } = require('./encoding-options');
+const { normalizeEncoder } = require('./encoding-options');
 const { normalizeNice } = require('./encoder-process');
 
 function clampNonNegative(value, fallback = 0) {
@@ -53,13 +53,13 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
   }
 
   function normalizeConfig(rawConfig = {}) {
-    const { x264Profile, x264Level, ...compatibleConfig } = rawConfig;
+    const { tune, x264Profile, x264Level, ...compatibleConfig } = rawConfig;
     return {
       ...defaultConfig(),
       ...compatibleConfig,
       sourceRoot: expandHome(rawConfig.sourceRoot || defaults.sourceRoot),
       outRoot: expandHome(rawConfig.outRoot || defaults.outRoot),
-      tune: normalizeTune(rawConfig.tune || defaults.tune),
+      encoder: normalizeEncoder(rawConfig.encoder || defaults.encoder),
       preset: String(rawConfig.preset || defaults.preset),
       mbPerMin: clampNonNegative(rawConfig.mbPerMin, defaults.mbPerMin),
       mbStep: clampNonNegative(rawConfig.mbStep, defaults.mbStep),
@@ -81,7 +81,7 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
       path: path.dirname(fullPath),
       fullPath,
       status: overrides.status || 'pending',
-      tune: normalizeTune(overrides.tune || config.tune || defaults.tune),
+      encoder: normalizeEncoder(overrides.encoder || config.encoder || defaults.encoder),
       saveTo: expandHome(overrides.saveTo || path.dirname(fullPath)),
       audioTrack: normalizeAudioTrack(overrides.audioTrack, 0),
       audioTracks: normalizeAudioTracks(overrides.audioTracks),
@@ -95,7 +95,7 @@ function createQueueModel({ defaults, expandHome, fs, path, resolveDeleteSource 
       .filter(item => !['encoded', 'skipped'].includes(item.status))
       .map(item => ({
         fullPath: expandHome(item.fullPath),
-        tune: normalizeTune(item.tune || defaults.tune),
+        encoder: normalizeEncoder(item.encoder || defaults.encoder),
         saveTo: expandHome(item.saveTo || path.dirname(item.fullPath)),
         audioTrack: normalizeAudioTrack(item.audioTrack, 0),
         audioTracks: normalizeAudioTracks(item.audioTracks),

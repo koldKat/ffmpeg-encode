@@ -19,7 +19,7 @@ const APP_CONFIG = Object.freeze({
   encodingDefaults: Object.freeze({
     sourceRoot: '.',
     outRoot: '~/Videos',
-    tune: 'none',
+    encoder: 'x265',
     preset: 'slow',
     mbPerMin: 10,
     mbStep: 50,

@@ -14,8 +14,8 @@ import {createPathAutocomplete} from '${moduleUrl('path-autocomplete.js')}';
 import {escapeHtml} from '${moduleUrl('formatters.js')}';
 document.querySelector('#login-screen').style.display='none';document.querySelector('#session-screen').style.display='none';document.querySelector('#app-screen').style.display='block';
 const tracks=[{index:0,language:'eng',codec:'aac',channels:2},{index:1,language:'jpn',codec:'aac',channels:2}];
-const items=['/source/season/a.mkv','/source/season/b.mkv','/source/root.mkv'].map(fullPath=>({fullPath,path:fullPath.slice(0,fullPath.lastIndexOf('/')),name:fullPath.split('/').pop(),tune:'film',audioTrack:0,audioTracks:tracks,deleteSource:false}));
-const test={state:{active:true,startedAt:'2026-11-04T01:00:00Z',config:{sourceRoot:'/source',tune:'film'}},appends:[],stateUpdates:0,holdInspect:false,holdAppend:false,pathRequests:[],holdPaths:false};
+const items=['/source/season/a.mkv','/source/season/b.mkv','/source/root.mkv'].map(fullPath=>({fullPath,path:fullPath.slice(0,fullPath.lastIndexOf('/')),name:fullPath.split('/').pop(),encoder:'x265',audioTrack:0,audioTracks:tracks,deleteSource:false}));
+const test={state:{active:true,startedAt:'2026-11-04T01:00:00Z',config:{sourceRoot:'/source',encoder:'x265'}},appends:[],stateUpdates:0,holdInspect:false,holdAppend:false,pathRequests:[],holdPaths:false};
 const inspection=()=>({found:items.length,inspectionId:'fixture-inspection',items:items.map(item=>({...item}))});
 const api=async(url,options={})=>{
  if(url==='/api/queue/inspect'){if(test.holdInspect)return new Promise(resolve=>test.releaseInspect=()=>resolve(inspection()));return inspection();}
@@ -67,13 +67,13 @@ async function interactions({ send }) {
   }
   await until('Boolean(window.dashboardTest)');
   await inspect();
-  await set('#active-dialog-tune','anima');
+  await set('#active-dialog-encoder','x264');
   await until('!document.querySelector("#themed-options").hidden');
   await check('document.querySelector("#themed-options").parentElement.id === "active-queue-dialog"','dropdown belongs to modal');
   await click('#themed-options .themed-option');
-  await check('document.querySelector("#active-dialog-tune").value === "animation"','real mouse selects filtered tune');
-  await click('#active-dialog-apply-tune');
-  await check('[...document.querySelectorAll("#active-queue-dialog-list .queue-meta")].every(n=>n.textContent.includes("animation"))','tune applies to grouped and individual files');
+  await check('document.querySelector("#active-dialog-encoder").value === "x264"','real mouse selects filtered encoder');
+  await click('#active-dialog-apply-encoder');
+  await check('[...document.querySelectorAll("#active-queue-dialog-list .queue-meta")].every(n=>n.textContent.includes("x264"))','encoder applies to grouped and individual files');
   await click('#active-dialog-audio + .themed-select-button');
   await until('!document.querySelector("#themed-options").hidden');
   await evaluate(`document.querySelectorAll('#themed-options .themed-option').forEach(n=>{if(n.textContent.startsWith('Language ENG'))n.dataset.pick='yes';});`);
@@ -86,7 +86,7 @@ async function interactions({ send }) {
   await evaluate(`document.querySelector('#active-queue-dialog-list .delete-source-group')?.setAttribute('open','');`);
   await click('#active-queue-dialog-list [data-editor-delete-source]');
   await evaluate(`window.editorNode=document.querySelector('#active-queue-dialog-list');dashboardTest.adder.render({...dashboardTest.state,progress:{overallPct:20}});`);
-  await check('window.editorNode === document.querySelector("#active-queue-dialog-list") && document.querySelector("#active-dialog-tune").value === "animation"','progress updates preserve draft controls');
+  await check('window.editorNode === document.querySelector("#active-queue-dialog-list") && document.querySelector("#active-dialog-encoder").value === "x264"','progress updates preserve draft controls');
   await check('!document.querySelector("[title]")','no default browser title tooltips');
   await evaluate(`window.tooltipEvents=[];for(const type of ['pointerover','pointerout','focusin','focusout','scroll'])document.addEventListener(type,e=>{tooltipEvents.push({type,target:e.target.className||e.target.nodeName,related:e.relatedTarget?.className,time:Math.round(performance.now())});if(tooltipEvents.length>30)tooltipEvents.shift();},true);`);
   const hover = await evaluate(`(()=>{const n=document.querySelector('#active-queue-dialog-list [data-tooltip]');n.scrollIntoView({block:'nearest'});window.hintTarget=n;const r=n.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
@@ -95,14 +95,14 @@ async function interactions({ send }) {
   await check('getComputedStyle(document.querySelector("#dashboard-tooltip")).backgroundColor === "rgb(16, 26, 43)"','tooltip follows dashboard palette');
   await evaluate('dashboardTest.holdAppend=true');await click('#active-queue-dialog-add');
   await until('Boolean(dashboardTest.releaseAppend)');
-  await check('document.querySelector("#active-dialog-tune").disabled && document.querySelector("#active-queue-dialog-list").inert','conflicting edits locked while appending');
+  await check('document.querySelector("#active-dialog-encoder").disabled && document.querySelector("#active-queue-dialog-list").inert','conflicting edits locked while appending');
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await check('document.querySelector("#active-queue-dialog").open','Escape cannot dismiss an in-flight append');
   await evaluate('dashboardTest.releaseAppend();dashboardTest.holdAppend=false');
   await until('!document.querySelector("#active-queue-dialog").open');
   await check('document.querySelector("#active-queue-dialog-list").children.length === 0','closed editor releases its queue DOM');
-  await check('dashboardTest.appends[0].items.length===3 && dashboardTest.appends[0].items.every(n=>n.tune==="animation" && n.audioTrack==="eng" && n.saveTo==="/output")','all configured overrides submitted');
+  await check('dashboardTest.appends[0].items.length===3 && dashboardTest.appends[0].items.every(n=>n.encoder==="x264" && n.audioTrack==="eng" && n.saveTo==="/output")','all configured overrides submitted');
   await check('dashboardTest.appends[0].items[0].fullPath === "/source/root.mkv" && dashboardTest.appends[0].items[0].deleteSource === true','order and per-file deletion choice submitted');
   await evaluate('dashboardTest.holdInspect=true');await set('#active-queue-path','/source');await click('#active-queue-inspect-btn');
   await until('Boolean(dashboardTest.releaseInspect)');
@@ -127,11 +127,11 @@ async function interactions({ send }) {
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await evaluate('dashboardTest.pathRequests[2].resolve({suggestions:["/source/cached"]})');await delay(50);
   await check('document.querySelector("#path-suggestions-active-queue").hidden','Escape cancels pending autocomplete');
-  await evaluate('dashboardTest.holdPaths=false');await inspect();await set('#active-dialog-tune','anima');
+  await evaluate('dashboardTest.holdPaths=false');await inspect();await set('#active-dialog-encoder','x264');
   await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
   await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13});
-  await check('document.querySelector("#active-dialog-tune").value === "animation"','Enter selects the filtered first option');
-  await set('#active-dialog-tune','anima');
+  await check('document.querySelector("#active-dialog-encoder").value === "x264"','Enter selects the filtered first option');
+  await set('#active-dialog-encoder','x264');
   await check('document.querySelector("#themed-options").getBoundingClientRect().right <= innerWidth','dropdown stays inside viewport');
   await evaluate('document.body.dataset.test=JSON.stringify({modalMouseSelection:true,audioMouseSelection:true,overrides:true,reorder:true,deleteChoice:true,draftPreservedOnProgress:true,themedTooltips:true,pendingAppendLocked:true,lateInspectIgnored:true,lateAppendIgnored:true,staleAutocompleteIgnored:true,escapeCancelsSuggestions:true,viewport:true,keyboardFilteredSelection:true,closedEditorUnloaded:true})');
 }

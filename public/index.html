@@ -99,8 +99,8 @@
               </div>
             </label>
             <label>
-              <span>Tune</span>
-              <input type="text" id="tune" list="tune-options" placeholder="none">
+              <span>Encoder</span>
+              <input type="text" id="encoder" list="encoder-options" placeholder="x265">
             </label>
             <label>
               <span>Preset</span>
@@ -249,12 +249,12 @@
           <div class="queue-bulk-tools" id="queue-tools">
             <div class="queue-bulk-grid">
               <div class="queue-bulk-labels">
-                <span>Apply tune</span>
+                <span>Apply encoder</span>
                 <span>Apply audio language / track</span>
                 <span>Apply save folder</span>
               </div>
               <div class="queue-bulk-fields">
-                <input type="text" id="bulk-tune" list="tune-options" placeholder="none" aria-label="Apply tune">
+                <input type="text" id="bulk-encoder" list="encoder-options" placeholder="x265" aria-label="Apply encoder">
                 <select id="bulk-audio-track" aria-label="Apply audio language or track">
                   <option value="0">Track 0 (default)</option>
                 </select>
@@ -264,19 +264,14 @@
                 </div>
               </div>
               <div class="queue-bulk-actions">
-                <button id="apply-tune-btn" class="ghost-btn small-btn">Apply Tune</button>
+                <button id="apply-encoder-btn" class="ghost-btn small-btn">Apply Encoder</button>
                 <button id="apply-audio-track-btn" class="ghost-btn small-btn">Apply Audio</button>
                 <button id="apply-save-btn" class="ghost-btn small-btn">Apply Save Folder</button>
               </div>
             </div>
-            <datalist id="tune-options">
-              <option value="none"></option>
-              <option value="animation"></option>
-              <option value="grain"></option>
-              <option value="fastdecode"></option>
-              <option value="zerolatency"></option>
-              <option value="psnr"></option>
-              <option value="ssim"></option>
+            <datalist id="encoder-options">
+              <option value="x264"></option>
+              <option value="x265"></option>
             </datalist>
             <datalist id="preset-options">
               <option value="ultrafast"></option>
@@ -327,12 +322,12 @@
               </div>
               <div class="queue-bulk-grid">
                 <div class="queue-bulk-labels">
-                  <span>Apply tune</span>
+                  <span>Apply encoder</span>
                   <span>Apply audio language / track</span>
                   <span>Apply save folder</span>
                 </div>
                 <div class="queue-bulk-fields">
-                  <input type="text" id="active-dialog-tune" list="tune-options" placeholder="none">
+                  <input type="text" id="active-dialog-encoder" list="encoder-options" placeholder="x265">
                   <select id="active-dialog-audio" aria-label="Apply audio language or track">
                     <option value="0">Track 0 (default)</option>
                   </select>
@@ -342,7 +337,7 @@
                   </div>
                 </div>
                 <div class="queue-bulk-actions">
-                  <button type="button" id="active-dialog-apply-tune" class="ghost-btn small-btn">Apply Tune</button>
+                  <button type="button" id="active-dialog-apply-encoder" class="ghost-btn small-btn">Apply Encoder</button>
                   <button type="button" id="active-dialog-apply-audio" class="ghost-btn small-btn">Apply Audio</button>
                   <button type="button" id="active-dialog-apply-save" class="ghost-btn small-btn">Apply Save Folder</button>
                 </div>

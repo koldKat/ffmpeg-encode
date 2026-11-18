@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { normalizeTune } = require('./server/encoding-options');
+const { normalizeEncoder } = require('./server/encoding-options');
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -176,7 +176,7 @@ function getPersistedQueuePlan(userId, config = getPersistedConfig(userId)) {
       const fullPath = expandHome(item.fullPath);
       return {
         fullPath,
-        tune: String(item.tune || config.tune || DEFAULTS.tune),
+        encoder: String(item.encoder || config.encoder || DEFAULTS.encoder),
         saveTo: expandHome(item.saveTo || path.dirname(fullPath)),
         audioTrack: normalizeAudioTrack(item.audioTrack, 0),
         audioTracks: normalizeAudioTracks(item.audioTracks),
@@ -758,7 +758,7 @@ function persistActiveQueuePlan() {
   saveQueuePlan(activeUserId, state.config, state.queue);
 }
 
-function createCurrentFile(index, total, inputPath, stagePath, srcSize, durationSeconds, totalFrames, sizeMb, vbKbps, tune, saveTo, audioTrack) {
+function createCurrentFile(index, total, inputPath, stagePath, srcSize, durationSeconds, totalFrames, sizeMb, vbKbps, encoder, saveTo, audioTrack) {
   return {
     index,
     total,
@@ -786,7 +786,7 @@ function createCurrentFile(index, total, inputPath, stagePath, srcSize, duration
     estimatedSizeMb: sizeMb,
     estimatedSavingsPct: srcSize > 0 ? ((srcSize - sizeMb * 1000000) / srcSize) * 100 : null,
     bitrateKbps: vbKbps,
-    tune,
+    encoder,
     saveTo,
     audioTrack,
   };
@@ -880,11 +880,11 @@ function buildFfmpegArgs({ inputPath, stagePath, vbKbps, config, pass, passlog, 
     '-map_metadata', '-1',
     '-map_chapters', '-1',
     '-sn',
-    '-c:v', 'libx265',
+    '-c:v', normalizeEncoder(config.encoder) === 'x264' ? 'libx264' : 'libx265',
     '-preset', config.preset,
-    '-profile:v', 'main10',
-    '-pix_fmt', 'yuv420p10le',
-    '-tag:v', 'hvc1',
+    '-profile:v', normalizeEncoder(config.encoder) === 'x264' ? 'high' : 'main10',
+    '-pix_fmt', normalizeEncoder(config.encoder) === 'x264' ? 'yuv420p' : 'yuv420p10le',
+    '-tag:v', normalizeEncoder(config.encoder) === 'x264' ? 'avc1' : 'hvc1',
     '-b:v', `${vbKbps}k`
   );
 
@@ -892,11 +892,13 @@ function buildFfmpegArgs({ inputPath, stagePath, vbKbps, config, pass, passlog, 
     args.push('-threads', String(Number(config.encThreads)));
   }
 
-  const tune = normalizeTune(config.tune);
-  if (tune !== 'none') args.push('-tune', tune);
-  // libx265 owns its pass statistics; FFmpeg's generic -pass is insufficient.
-  const statsPath = passlog.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
-  args.push('-x265-params', `pass=${pass}:stats=${statsPath}:aq-mode=3`);
+  if (normalizeEncoder(config.encoder) === 'x264') {
+    args.push('-pass', String(pass), '-passlogfile', passlog);
+  } else {
+    // x265 owns its two-pass statistics.
+    const statsPath = passlog.replace(/\\/g, '\\\\').replace(/:/g, '\\:');
+    args.push('-x265-params', `pass=${pass}:stats=${statsPath}:aq-mode=3`);
+  }
 
   if (pass === 1) {
     args.push('-f', 'mp4', '-an', '/dev/null');
@@ -1101,7 +1103,7 @@ async function encodeFile(queueItem, index, total, config) {
   if (stopRequested) throw new Error('stopped');
 
   const filePath = queueItem.fullPath;
-  const effectiveTune = String(queueItem.tune || config.tune || DEFAULTS.tune);
+  const effectiveEncoder = normalizeEncoder(queueItem.encoder || config.encoder || DEFAULTS.encoder);
   const destinationDir = expandHome(queueItem.saveTo || path.dirname(filePath));
   const audioTrack = normalizeAudioTrack(queueItem.audioTrack, 0);
   const rel = path.relative(config.sourceRoot, filePath);
@@ -1164,13 +1166,13 @@ async function encodeFile(queueItem, index, total, config) {
   const passlog = path.join(os.tmpdir(), `ffpass_${Date.now()}_${Math.random().toString(16).slice(2)}`);
   const fileStarted = Date.now();
 
-  state.currentFile = createCurrentFile(index, total, filePath, stagePath, srcSize, probe.durationSeconds, probe.totalFrames, sizeMb, vbKbps, effectiveTune, destinationDir, audioTrack);
-  updateQueueItem(filePath, 'running', { tune: effectiveTune, saveTo: destinationDir, audioTrack });
+  state.currentFile = createCurrentFile(index, total, filePath, stagePath, srcSize, probe.durationSeconds, probe.totalFrames, sizeMb, vbKbps, effectiveEncoder, destinationDir, audioTrack);
+  updateQueueItem(filePath, 'running', { encoder: effectiveEncoder, saveTo: destinationDir, audioTrack });
   publish();
   pushEvent(`Processing ${index}/${total}: ${path.basename(filePath)}`);
 
   try {
-    const fileConfig = { ...config, tune: effectiveTune };
+    const fileConfig = { ...config, encoder: effectiveEncoder };
     await runFfmpegPass(1, { inputPath: filePath, stagePath, vbKbps, config: fileConfig, passlog, audioTrack });
     if (stopRequested) throw new Error('stopped');
     await runFfmpegPass(2, { inputPath: filePath, stagePath, vbKbps, config: fileConfig, passlog, audioTrack });
@@ -1584,10 +1586,10 @@ async function handleQueue(req, res, url = null) {
     send(res, 200, { ok: true, queue: state.queue, state: clonePublicState(getPersistedConfig(session.user_id)) });
     return;
   }
-  const hasTune = Object.prototype.hasOwnProperty.call(body, 'tune');
+  const hasEncoder = Object.prototype.hasOwnProperty.call(body, 'encoder');
   const hasSaveTo = Object.prototype.hasOwnProperty.call(body, 'saveTo');
   const hasAudioTrack = Object.prototype.hasOwnProperty.call(body, 'audioTrack');
-  if (!hasTune && !hasSaveTo && !hasAudioTrack) {
+  if (!hasEncoder && !hasSaveTo && !hasAudioTrack) {
     send(res, 400, { error: 'Nothing to apply.' });
     return;
   }
@@ -1595,9 +1597,9 @@ async function handleQueue(req, res, url = null) {
   let updated = 0;
   for (const item of state.queue) {
     if (!wanted.has(item.fullPath)) continue;
-    if (hasTune) {
-      const rawTune = String(body.tune || '').trim();
-      item.tune = rawTune || state.config.tune || DEFAULTS.tune;
+    if (hasEncoder) {
+      const rawEncoder = String(body.encoder || '').trim();
+      item.encoder = normalizeEncoder(rawEncoder || state.config.encoder || DEFAULTS.encoder);
     }
     if (hasSaveTo) {
       const rawSaveTo = String(body.saveTo || '').trim();
@@ -1793,7 +1795,7 @@ async function handleQueueAppend(req, res) {
 
   const newItems = pendingRequestedItems.map((requestedItem, index) => {
     const inspectedItem = inspectedByPath.get(requestedItem.fullPath);
-    const rawTune = String(requestedItem.tune || '').trim();
+    const rawEncoder = String(requestedItem.encoder || '').trim();
     const rawSaveTo = String(requestedItem.saveTo || '').trim();
     const rawAudioTrack = String(requestedItem.audioTrack || '').trim();
     const requestedAudioTrack = /^\d+$/.test(rawAudioTrack) ? normalizeAudioTrack(rawAudioTrack, 0) : null;
@@ -1802,7 +1804,7 @@ async function handleQueueAppend(req, res) {
       state.queue.length + index + 1,
       state.config,
       {
-        tune: rawTune || state.config.tune,
+        encoder: normalizeEncoder(rawEncoder || state.config.encoder),
         saveTo: rawSaveTo || path.dirname(inspectedItem.fullPath),
         audioTrack: requestedAudioTrack == null
           ? resolveAudioTrackByLanguage(inspectedItem, rawAudioTrack)

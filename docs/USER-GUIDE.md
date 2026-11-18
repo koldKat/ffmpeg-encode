@@ -33,8 +33,8 @@ Local admin:
 Main fields:
 - `Source root`: folder to scan for video files.
 - `Staging root`: temporary output area used during encoding before the final file is promoted.
-- `Tune`: default x264 tune.
-- `Preset`: ffmpeg/x264 preset.
+- `Encoder`: default video encoder: x264 (H.264) or x265 (HEVC).
+- `Preset`: encoding preset for the selected encoder.
 - `MB/min`: target-size rate before step rounding. Default `10`.
 - `MB/step`: target-size rounding step in MB. Default `50`.
 - `Audio kbps`: AAC audio bitrate.
@@ -52,7 +52,7 @@ Example:
 
 Path inputs use live directory suggestions from disk while you type. This is available for `Source root`, `Staging root`, and the bulk `Apply save folder` field.
 
-These settings are stored in the database per machine for the logged-in user. The server detects the current machine automatically from its hostname. The editable queue plan is also persisted per machine, so after a restart your per-file or per-folder tune, audio-track, save-folder, and source-deletion assignments, plus the queue order you arranged, come back on that same machine unless the source files have already been removed.
+These settings are stored in the database per machine for the logged-in user. The server detects the current machine automatically from its hostname. The editable queue plan is also persisted per machine, so after a restart your per-file or per-folder encoder, audio-track, save-folder, and source-deletion assignments, plus the queue order you arranged, come back on that same machine unless the source files have already been removed.
 
 `Delete all source files after successful encode` is off by default. Turning it on selects source deletion for every queued file. Clearing any individual file automatically clears the global checkbox; selecting every individual file automatically selects it again.
 
@@ -75,7 +75,7 @@ Bulk actions:
 - Subfolders are dragged as a single unit, while the files inside that subfolder keep their existing internal order.
 - The queue auto-scrolls while dragging near the top or bottom edge, so long moves do not require step-by-step repositioning.
 - Queue cards stay compact by hiding the source path until you hover the file or folder name.
-- `Apply Tune` sets a tune for all selected files.
+- `Apply Encoder` sets a encoder for all selected files.
 - `Apply Audio` provides a dropdown containing languages and zero-based audio stream numbers derived from the files' probed metadata. Track `0` is the first audio stream, track `1` is the second, and so on.
 - Language suggestions are derived from the loaded files; languages are not hardcoded. The server resolves the requested language separately for each selected file.
 - If a requested language or numeric track is missing from a particular file, that file falls back to audio track `0`.
@@ -84,15 +84,15 @@ Bulk actions:
 - The `X` button on each queue card removes that file or grouped subfolder from the editable queue only. It does not delete anything from disk.
 
 This allows mixed batches, for example:
-- 200 files saved to one folder with `animation`
-- 20 files saved to another folder with `film`
+- 200 files saved to one folder with `x264`
+- 20 files saved to another folder with `x265`
 - root-level files handled one by one
 
 Queue plan persistence:
 - loaded queue assignments are stored in SQLite per machine
 - the current machine is detected automatically from the server hostname
 - restarting the server reloads the remaining queue plan for that machine
-- pressing `Load File Queue` preserves saved per-file tune, audio-track, save-folder, source-deletion assignments, and queue order for matching files
+- pressing `Load File Queue` preserves saved per-file encoder, audio-track, save-folder, source-deletion assignments, and queue order for matching files
 - saved queue order is preserved for matching files on that machine
 - successfully encoded or skipped files are removed from the saved plan
 - failed files remain in the saved plan
@@ -107,7 +107,7 @@ An indeterminate progress bar remains visible while this combined discovery and 
 
 Inspection opens a queue-editor dialog using the same selection units as the normal Queue panel: files directly under the active source root remain individual rows, while files in each deeper directory are represented by one directory row. All rows start selected. In that dialog you can:
 - choose the individual files or directory groups to append with their checkboxes, or use `Select All` and `Clear`
-- apply `Tune`, audio language/track, and save destination to the selected rows with the same bulk toolbar used by the main Queue panel
+- apply `Encoder`, audio language/track, and save destination to the selected rows with the same bulk toolbar used by the main Queue panel
 - choose `Delete source` independently for every inspected file before adding it
 - choose a detected language or a numeric track from a selectable dropdown derived only from the inspected files' metadata
 - remove individual files or entire directory groups you do not want to append
@@ -121,11 +121,11 @@ Press `Add to Queue` to append only the selected, configured rows in their displ
 
 - Existing queue paths are ignored, so the same file is not added twice.
 - The staging folder and paths outside the active source root are rejected.
-- Blank settings fall back to the active batch tune, audio track `0`, and each file's source folder.
+- Blank settings fall back to the active batch encoder, audio track `0`, and each file's source folder.
 - Added files are persisted immediately with the remaining queue and survive a server restart.
 - The batch total, overall progress, and ETA are recalculated as soon as files are added. The percentage may decrease because the batch now contains more work.
 - During encoding, the current file is locked in place but every visible pending file can be dragged into a new order. Loaded pending entries are reordered without moving unseen entries ahead of them.
-- Tune, audio, destination, and removal remain locked for files already in the active queue. Source deletion can still be changed for pending files, but is locked for the file currently encoding.
+- Encoder, audio, destination, and removal remain locked for files already in the active queue. Source deletion can still be changed for pending files, but is locked for the file currently encoding.
 - If `Stop After Current File` is enabled, the current file still finishes and the newly added files remain saved for a later run.
 
 ## What Happens During Encoding
@@ -227,7 +227,7 @@ Admin resource cards refresh every second. CPU percentage is normalized to the f
 
 ## Dashboard controls
 
-Tune and audio dropdowns support mouse selection and keyboard navigation inside the inspection dialog. Enter accepts the highlighted filtered option; Escape closes the choices first. Hints use the dashboard theme.
+Encoder and audio dropdowns support mouse selection and keyboard navigation inside the inspection dialog. Enter accepts the highlighted filtered option; Escape closes the choices first. Hints use the dashboard theme.
 
 Live progress preserves the inspection draft. If that batch ends or another batch replaces it, its preview closes and late inspection responses are ignored. Controls are temporarily locked while additions are submitted. The mobile editor reserves room for its file list. Temporary live-update disconnections reconnect automatically.
 

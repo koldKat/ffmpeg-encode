@@ -77,17 +77,17 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   const selectionCount = document.getElementById('active-dialog-selection-count');
   const selectAllButton = document.getElementById('active-dialog-select-all');
   const clearButton = document.getElementById('active-dialog-clear');
-  const tuneInput = document.getElementById('active-dialog-tune');
+  const encoderInput = document.getElementById('active-dialog-encoder');
   const audioInput = document.getElementById('active-dialog-audio');
   const saveInput = document.getElementById('active-dialog-save');
   const saveSuggestions = document.getElementById('path-suggestions-active-dialog-save');
-  const applyTuneButton = document.getElementById('active-dialog-apply-tune');
+  const applyEncoderButton = document.getElementById('active-dialog-apply-encoder');
   const applyAudioButton = document.getElementById('active-dialog-apply-audio');
   const applySaveButton = document.getElementById('active-dialog-apply-save');
   const cancelButton = document.getElementById('active-queue-dialog-cancel');
   const addButton = document.getElementById('active-queue-dialog-add');
   let activeSourceRoot = '';
-  let activeTune = 'none';
+  let activeEncoder = 'x265';
   let inspectionId = '';
   let items = [];
   let selectedUnitKeys = new Set();
@@ -97,8 +97,8 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   let generation = 0;
 
   const required = [panel, form, pathInput, inspectButton, inspectProgress, message, dialog, list, count,
-    selectionCount, selectAllButton, clearButton, tuneInput, audioInput,
-    saveInput, applyTuneButton, applyAudioButton, applySaveButton, cancelButton, addButton];
+    selectionCount, selectAllButton, clearButton, encoderInput, audioInput,
+    saveInput, applyEncoderButton, applyAudioButton, applySaveButton, cancelButton, addButton];
   if (required.some(element => !element)) return { render() {} };
 
   wirePathAutocomplete(pathInput, pathSuggestions);
@@ -112,8 +112,8 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   function setBusy(value, inspecting = false) {
     busy = value;
     list.inert = value;
-    for (const control of [tuneInput, audioInput, saveInput, selectAllButton, clearButton, cancelButton]) control.disabled = value;
-    for (const button of [applyTuneButton, applyAudioButton, applySaveButton]) button.disabled = value || !selectedUnitKeys.size;
+    for (const control of [encoderInput, audioInput, saveInput, selectAllButton, clearButton, cancelButton]) control.disabled = value;
+    for (const button of [applyEncoderButton, applyAudioButton, applySaveButton]) button.disabled = value || !selectedUnitKeys.size;
     addButton.toggleAttribute('aria-busy', value && !inspecting);
     inspectButton.disabled = value;
     inspectButton.textContent = value && inspecting ? 'Inspecting...' : 'Inspect';
@@ -165,7 +165,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       ? `Add ${selectedFileCount} to Queue`
       : 'Add to Queue';
     addButton.disabled = busy || !selectedUnitKeys.size;
-    [applyTuneButton, applyAudioButton, applySaveButton].forEach(button => {
+    [applyEncoderButton, applyAudioButton, applySaveButton].forEach(button => {
       button.disabled = busy || !selectedUnitKeys.size;
     });
     list.innerHTML = units.map((unit, index) => {
@@ -187,7 +187,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
             </div>
             <div class="queue-meta">
               <span class="meta-chip">${unit.type} <strong>${unit.filePaths.length}</strong></span>
-              <span class="meta-chip">tune <strong>${escapeHtml(unit.tune || activeTune)}</strong></span>
+              <span class="meta-chip">encoder <strong>${escapeHtml(unit.encoder || activeEncoder)}</strong></span>
               <span class="meta-chip" data-tooltip="${audioTitle}">audio <strong>${escapeHtml(audio.selected)}</strong></span>
               <span class="meta-chip audio-track-chip" data-tooltip="${audioTitle}">available <strong>${escapeHtml(audio.available)}</strong></span>
               <span class="meta-chip">save to <strong>${escapeHtml(unit.saveTo || unit.subtitle)}</strong></span>
@@ -231,13 +231,13 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
       inspectionId = data.inspectionId;
       items = data.items.map(item => ({
         ...item,
-        tune: item.tune || activeTune,
+        encoder: item.encoder || activeEncoder,
         audioTrack: String(item.audioTrack ?? 0),
         saveTo: item.saveTo || item.path,
         deleteSource: item.deleteSource === true,
       }));
       selectedUnitKeys = new Set(getSelectionUnits().map(unit => unit.key));
-      tuneInput.value = activeTune;
+      encoderInput.value = activeEncoder;
       audioInput.value = '0';
       saveInput.value = '';
       renderAudioOptions();
@@ -276,7 +276,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
           inspectionId,
           items: selectedItems.map(item => ({
             fullPath: item.fullPath,
-            tune: item.tune,
+            encoder: item.encoder,
             audioTrack: item.audioTrack,
             saveTo: item.saveTo,
             deleteSource: item.deleteSource === true,
@@ -315,7 +315,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
     selectedUnitKeys.clear();
     renderItems();
   });
-  applyTuneButton.addEventListener('click', () => applyToSelected('tune', tuneInput.value.trim(), () => activeTune));
+  applyEncoderButton.addEventListener('click', () => applyToSelected('encoder', encoderInput.value.trim(), () => activeEncoder));
   applyAudioButton.addEventListener('click', () => applyToSelected('audioTrack', audioInput.value.trim(), () => '0'));
   applySaveButton.addEventListener('click', () => applyToSelected('saveTo', saveInput.value.trim(), item => item.path));
   list.addEventListener('change', event => {
@@ -425,7 +425,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         setMessage('');
         return;
       }
-      activeTune = state.config?.tune || 'none';
+      activeEncoder = state.config?.encoder || 'x265';
       const sourceRoot = state.config?.sourceRoot || '';
       if (sourceRoot !== activeSourceRoot) {
         activeSourceRoot = sourceRoot;

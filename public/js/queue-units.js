@@ -54,7 +54,7 @@ export function buildQueueSelectionUnits(queue = [], sourceRoot = '') {
         subtitle: item.path,
         hoverPath: item.path,
         filePaths: [item.fullPath],
-        tune: item.tune || 'none',
+        encoder: item.encoder || 'x265',
         saveTo: item.saveTo || item.path,
         audioTrack: item.audioTrack ?? 0,
         audioTracks: item.audioTracks || [],
@@ -78,7 +78,7 @@ export function buildQueueSelectionUnits(queue = [], sourceRoot = '') {
         subtitle: item.path,
         hoverPath: item.path,
         filePaths: [],
-        tuneValues: new Set(),
+        encoderValues: new Set(),
         saveValues: new Set(),
         audioTrackValues: new Set(),
         audioTrackLists: [],
@@ -89,7 +89,7 @@ export function buildQueueSelectionUnits(queue = [], sourceRoot = '') {
       units.push(unit);
     }
     unit.filePaths.push(item.fullPath);
-    unit.tuneValues.add(item.tune || 'none');
+    unit.encoderValues.add(item.encoder || 'x265');
     unit.saveValues.add(item.saveTo || item.path);
     unit.audioTrackValues.add(item.audioTrack ?? 0);
     unit.audioTrackLists.push(item.audioTracks || []);
@@ -110,7 +110,7 @@ export function buildQueueSelectionUnits(queue = [], sourceRoot = '') {
       subtitle: `${unit.subtitle} \u2022 ${unit.filePaths.length} file(s)`,
       hoverPath: unit.hoverPath,
       filePaths: unit.filePaths,
-      tune: unit.tuneValues.size === 1 ? [...unit.tuneValues][0] : 'mixed',
+      encoder: unit.encoderValues.size === 1 ? [...unit.encoderValues][0] : 'mixed',
       saveTo: unit.saveValues.size === 1 ? [...unit.saveValues][0] : 'mixed',
       audioTrack: unit.audioTrackValues.size === 1 ? [...unit.audioTrackValues][0] : 'mixed',
       audioTracks: sharedFolderAudioTracks(unit.audioTrackLists),

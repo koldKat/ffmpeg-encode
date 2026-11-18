@@ -18,7 +18,8 @@ function load(name, next, context) {
 }
 function base() {
   return {
-    state: { active: true, config: { sourceRoot: '/source', tune: 'film', deleteSource: false }, queue: [], counts: {}, scan: {} },
+    normalizeEncoder: require('../server/encoding-options').normalizeEncoder,
+    state: { active: true, config: { sourceRoot: '/source', encoder: 'x265', deleteSource: false }, queue: [], counts: {}, scan: {} },
     activeRunId: 11, activeUserId: 7, runnerPromise: {}, scanInProgress: false, path: require('node:path'),
     authenticate: async () => ({ user_id: 7 }), authorizeApp: () => true,
     send: (res, status, body) => Object.assign(res, { status, body }),
@@ -87,8 +88,8 @@ test('a failed append remains retryable and successful append consumes its token
   const append = load('handleQueueAppend', 'handleActiveQueueOrder', c), bad = {}, good = {}, stale = {};
   await append({ body: { inspectionId: id, items: [] } }, bad);
   assert.equal(bad.status, 400); assert.ok(store.get(id, 7, 11));
-  await append({ body: { inspectionId: id, items: [{ fullPath: file.fullPath, tune: 'animation' }] } }, good);
-  assert.equal(good.status, 200); assert.equal(c.state.queue[0].tune, 'animation'); assert.equal(store.get(id, 7, 11), null);
+  await append({ body: { inspectionId: id, items: [{ fullPath: file.fullPath, encoder: 'x264' }] } }, good);
+  assert.equal(good.status, 200); assert.equal(c.state.queue[0].encoder, 'x264'); assert.equal(store.get(id, 7, 11), null);
   const second = store.create(7, { runId: 11, sourceRoot: '/source', items: [file] });
   c.activeRunId = 12;
   await append({ body: { inspectionId: second, items: [file] } }, stale);
@@ -100,7 +101,7 @@ test('an idle queue edit is rejected if a batch starts while its body is arrivin
   c.state.active = false;c.activeRunId = null;c.runnerPromise = null;
   Object.assign(c, { hydrateIdleStateForUser() {}, readBody: () => gate.promise });
   const pending = load('handleQueue', 'discoverActiveQueuePaths', c)({ method: 'POST' }, response);
-  await flush();c.state.active = true;gate.resolve({ filePaths: ['/source/a.mkv'], tune: 'animation' });
+  await flush();c.state.active = true;gate.resolve({ filePaths: ['/source/a.mkv'], encoder: 'x264' });
   await pending;assert.equal(response.status, 409);assert.equal(c.state.queue.length, 0);
 });
 
