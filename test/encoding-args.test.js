@@ -33,8 +33,9 @@ test('both passes use Main10 HEVC, dark-scene AQ and the same private stats file
   }
 });
 
-test('encoder selection normalizes supported choices and defaults old or invalid values to x265', () => {
-  for (const value of ['film', 'animation', '', undefined, 'invalid']) assert.equal(normalizeEncoder(value), 'x265');
+test('encoder selection normalizes supported choices and defaults old or invalid values to x264', () => {
+  for (const value of ['film', 'animation', '', undefined, 'invalid']) assert.equal(normalizeEncoder(value), 'x264');
+  assert.equal(APP_CONFIG.encodingDefaults.encoder, 'x264');
   assert.equal(normalizeEncoder('x264'), 'x264');
   assert.equal(normalizeEncoder(' X264 '), 'x264');
   assert.equal(normalizeEncoder('x265'), 'x265');

@@ -87,7 +87,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
   const cancelButton = document.getElementById('active-queue-dialog-cancel');
   const addButton = document.getElementById('active-queue-dialog-add');
   let activeSourceRoot = '';
-  let activeEncoder = 'x265';
+  let activeEncoder = 'x264';
   let inspectionId = '';
   let items = [];
   let selectedUnitKeys = new Set();
@@ -425,7 +425,7 @@ export function createActiveQueueAdder({ apiFetch, wirePathAutocomplete, onState
         setMessage('');
         return;
       }
-      activeEncoder = state.config?.encoder || 'x265';
+      activeEncoder = state.config?.encoder || 'x264';
       const sourceRoot = state.config?.sourceRoot || '';
       if (sourceRoot !== activeSourceRoot) {
         activeSourceRoot = sourceRoot;

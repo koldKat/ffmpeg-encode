@@ -169,7 +169,7 @@ function setConfigInputs(config, force = false) {
   if (hydratedConfig && !force) return;
   els.sourceRoot.value = config.sourceRoot || '.';
   els.outRoot.value = config.outRoot || '~/Videos';
-  els.encoder.value = config.encoder || 'x265';
+  els.encoder.value = config.encoder || 'x264';
   els.preset.value = config.preset || 'slow';
   els.mbPerMin.value = config.mbPerMin ?? 10;
   els.mbStep.value = config.mbStep ?? 50;
@@ -459,7 +459,7 @@ function renderQueue(queue, info = {}, active = false) {
     subtitle: item.path,
     hoverPath: item.path,
     filePaths: [item.fullPath],
-    encoder: item.encoder || 'x265',
+    encoder: item.encoder || 'x264',
     saveTo: item.saveTo || item.path,
     audioTrack: item.audioTrack ?? 0,
     audioTracks: item.audioTracks || [],
@@ -523,7 +523,7 @@ function renderQueue(queue, info = {}, active = false) {
           </div>
           <div class="queue-meta">
             ${metaChips}
-            <span class="meta-chip">encoder <strong>${escapeHtml(item.encoder || 'x265')}</strong></span>
+            <span class="meta-chip">encoder <strong>${escapeHtml(item.encoder || 'x264')}</strong></span>
             <span class="meta-chip" data-tooltip="${audioTitle}">audio <strong>${escapeHtml(audioSummary.selected)}</strong></span>
             ${audioAvailable}
             <span class="meta-chip">save to <strong>${escapeHtml(item.saveTo || item.subtitle)}</strong></span>
